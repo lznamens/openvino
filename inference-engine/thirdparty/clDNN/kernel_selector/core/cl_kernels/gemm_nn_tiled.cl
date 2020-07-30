@@ -144,6 +144,12 @@ KERNEL(gemm_nn_tiled)(
             b_ptr += N;
         } // Loading B tile end
 
+#if TRANSPOSE_INPUT1
+        B_FLOATN tile_input1_col0 = BLOCK_SHUFFLE(tile_input10, 0);
+        PACKED_INPUT1_TYPE_VEC tile_input1_col1 = BLOCK_SHUFFLE(tile_input10, 1);
+        PACKED_INPUT1_TYPE_VEC tile_input1_col2 = BLOCK_SHUFFLE(tile_input10, 2);
+#endif // TRANSPOSE_INPUT1        
+
         // Loading A tile
         for (uint dot_id = 0; dot_id < tile_m_iterations; dot_id++) {
 #if TILE_K_NOT_DIVISIBLE

@@ -75,10 +75,8 @@ GemmKernelTiled::GemmTuningData GemmKernelTiled::SetTuningParams(const gemm_para
     tuning_data.tile_k_size = tuning_data.simd_size;
     tuning_data.tile_m_size = 8;
 
-    if ((params.inputs[0].Y().v % tuning_data.tile_m_size) != 0 ||
-        (params.inputs[0].X().v % tuning_data.tile_k_size) != 0 ||
-        (params.inputs[1].X().v % tuning_data.tile_n_size) != 0 ||
-        total_batches > 1)
+    if ((output.Y().v % tuning_data.tile_m_size) != 0 || (params.inputs[0].X().v % tuning_data.tile_k_size) != 0 ||
+        (output.X().v % tuning_data.tile_n_size) != 0 || total_batches > 1 || params.transpose_input1)
     {
         tuning_data.simd_size = 16;
         tuning_data.tile_n_size = tuning_data.simd_size;
@@ -101,17 +99,17 @@ GemmKernelTiled::GemmTuningData GemmKernelTiled::SetTuningParams(const gemm_para
 JitConstants GemmKernelTiled::GetJitConstants(const gemm_params& params) const {
     JitConstants jit = Parent::GetJitConstants(params);
 
-    auto leftover_m = params.inputs[0].Y().v % tuning_data.tile_m_size;
+    auto leftover_m = params.output.Y().v % tuning_data.tile_m_size;
     auto leftover_n = params.inputs[1].X().v % tuning_data.tile_n_size;
-    auto leftover_k = params.inputs[0].X().v % tuning_data.tile_k_size;
+    auto leftover_k = params.output.X().v % tuning_data.tile_k_size;
     auto b_vec_size = tuning_data.tile_n_size / tuning_data.simd_size;
 
     jit.Merge(MakeTypeJitConstants(params.inputs[0].GetDType(), "ACCUMULATOR"));
 
     jit.AddConstants({
-        MakeJitConstant("M", params.inputs[0].Y().v),
+        MakeJitConstant("M", params.output.Y().v),
         MakeJitConstant("K", params.inputs[0].X().v),
-        MakeJitConstant("N", params.inputs[1].X().v),
+        MakeJitConstant("N", params.output.X().v),
         MakeJitConstant("SIMD_WIDTH", tuning_data.simd_size),
         MakeJitConstant("TILE_M", tuning_data.tile_m_size),
         MakeJitConstant("TILE_N", tuning_data.tile_n_size),
@@ -186,7 +184,12 @@ bool GemmKernelTiled::Validate(const Params& params, const optional_params& opti
 
     const auto& gmm_params = static_cast<const gemm_params&>(params);
 
-    if (gmm_params.transpose_input0 == true || gmm_params.transpose_input1 == true)
+    // if (gmm_params.transpose_input0 == true || gmm_params.transpose_input1 == true)
+    //    return false;
+    if (gmm_params.transpose_input1 && (gmm_params.inputs[1].X().v % 16 || gmm_params.inputs[1].Y().v % 16))
+        return false;
+
+    if (gmm_params.transpose_input0) 
         return false;
 
     return true;
