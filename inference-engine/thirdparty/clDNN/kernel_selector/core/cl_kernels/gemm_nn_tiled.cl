@@ -18,6 +18,12 @@
 
 #define unroll_for __attribute__((opencl_unroll_hint)) for
 
+#if INPUT0_TYPE_SIZE == 4
+#define BLOCK_SHUFFLE               intel_sub_group_shuffle
+#else // INPUT0_TYPE_SIZE == 4
+#define BLOCK_SHUFFLE(data, sg_lid) as_half16(intel_sub_group_shuffle(as_short16(data), sg_lid))
+#endif // INPUT0_TYPE_SIZE == 4
+
 #if TILE_K > SIMD_WIDTH
     #define BLOCK_READ_A(ptr, offset) CAT(UNIT_BLOCK_READ, A_VEC_SIZE)(ptr, offset)
 #else // TILE_K > SIMD_WIDTH
@@ -116,7 +122,11 @@ KERNEL(gemm_nn_tiled)(
 
     // Start pointers offsets
     const __global INPUT0_TYPE* a_ptr = input0 + batch_offset_input0 + tile_m_num * TILE_M * K;
+#if !TRANSPOSE_INPUT1    
     const __global INPUT1_TYPE* b_ptr = input1 + batch_offset_input1 + tile_n_num * TILE_N;
+#else // !TRANSPOSE_INPUT1
+    const __global INPUT1_TYPE* b_ptr = input1 + batch_offset_input1 + tile_n_num * TILE_N * K;    
+#endif // !TRANSPOSE_INPUT1
 #ifdef INPUT2_TYPE
     const __global INPUT2_TYPE* c_ptr = input2 + batch_offset_input2 + tile_m_num * TILE_M * N + tile_n_num * TILE_N;
 #endif // INPUT2_TYPE
@@ -124,7 +134,11 @@ KERNEL(gemm_nn_tiled)(
 
     uint b_raw_global_id = tile_n_num * TILE_N + sglid;
 
+#if !TRANSPOSE_INPUT1
     B_FLOATN b_tile[TILE_K];
+#else // !TRANSPOSE_INPUT1
+    MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile;
+#endif // !TRANSPOSE_INPUT1
     B_FLOATN c_tile[TILE_M];
 
     for (uint i = 0; i < TILE_M; i++) {
@@ -141,13 +155,41 @@ KERNEL(gemm_nn_tiled)(
 #else // TILE_N_NOT_DIVISIBLE
             b_tile[b_load_id] = BLOCK_READ_B(b_ptr, 0);
 #endif // TILE_N_NOT_DIVISIBLE
+#if !TRANSPOSE_INPUT1
             b_ptr += N;
+#else // !TRANSPOSE_INPUT1
+            b_ptr += K;
+#endif // !TRANSPOSE_INPUT1            
         } // Loading B tile end
 
 #if TRANSPOSE_INPUT1
-        B_FLOATN tile_input1_col0 = BLOCK_SHUFFLE(tile_input10, 0);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col1 = BLOCK_SHUFFLE(tile_input10, 1);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col2 = BLOCK_SHUFFLE(tile_input10, 2);
+        b_ptr -= K * SIMD_WIDTH - SIMD_WIDTH;
+
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col0 = BLOCK_SHUFFLE(b_tile, 0);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col1 = BLOCK_SHUFFLE(b_tile, 1);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col2 = BLOCK_SHUFFLE(b_tile, 2);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col3 = BLOCK_SHUFFLE(b_tile, 3);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col4 = BLOCK_SHUFFLE(b_tile, 4);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col5 = BLOCK_SHUFFLE(b_tile, 5);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col6 = BLOCK_SHUFFLE(b_tile, 6);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col7 = BLOCK_SHUFFLE(b_tile, 7);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col8 = BLOCK_SHUFFLE(b_tile, 8);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col9 = BLOCK_SHUFFLE(b_tile, 9);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col10 = BLOCK_SHUFFLE(b_tile, 10);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col11 = BLOCK_SHUFFLE(b_tile, 11);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col12 = BLOCK_SHUFFLE(b_tile, 12);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col13 = BLOCK_SHUFFLE(b_tile, 13);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col14 = BLOCK_SHUFFLE(b_tile, 14);
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, SIMD_WIDTH) b_tile_col15 = BLOCK_SHUFFLE(b_tile, 15);
+
+        b_tile.s0 = b_tile_col0[sglid]; b_tile.s1 = b_tile_col1[sglid];
+        b_tile.s2 = b_tile_col2[sglid]; b_tile.s3 = b_tile_col3[sglid];
+        b_tile.s4 = b_tile_col4[sglid]; b_tile.s5 = b_tile_col5[sglid];
+        b_tile.s6 = b_tile_col6[sglid]; b_tile.s7 = b_tile_col7[sglid];
+        b_tile.s8 = b_tile_col8[sglid]; b_tile.s9 = b_tile_col9[sglid];
+        b_tile.sa = b_tile_col10[sglid]; b_tile.sb = b_tile_col11[sglid];
+        b_tile.sc = b_tile_col12[sglid]; b_tile.sd = b_tile_col13[sglid];
+        b_tile.se = b_tile_col14[sglid]; b_tile.sf = b_tile_col15[sglid];
 #endif // TRANSPOSE_INPUT1        
 
         // Loading A tile
@@ -255,6 +297,7 @@ KERNEL(gemm_nn_tiled)(
 }
 
 #undef unroll_for
+#undef BLOCK_SHUFFLE
 #undef BLOCK_READ_A
 #undef BLOCK_READ_B
 #undef BLOCK_WRITE_C
