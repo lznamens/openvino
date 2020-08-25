@@ -21,18 +21,14 @@ namespace kernel_selector {
 
 static const size_t sub_group_size = 16;
 static const size_t feature_block_size = 16;
-static size_t output_block_num = 1;
 
 ConvolutionKernel_b_fs_yx_fsv16::ConvolutionKernel_b_fs_yx_fsv16() : ConvolutionKernelBase("convolution_gpu_bfyx_f16") {
     std::vector<size_t> outputBlockWidths = {2, 4, 8};
-    std::vector<size_t> outputBlockNums = {1, 2, 4};
     std::vector<std::string> executionModes = ConvolutionKernelBase::autoTuneOptions;
 
     for (auto w : outputBlockWidths) {
-        for (auto n : outputBlockNums) {
-            for (auto exeMode : executionModes) {
-                autoTuneOptions.emplace_back(AutoTuneOption{w, n, exeMode});
-            }
+        for (auto exeMode : executionModes) {
+            autoTuneOptions.emplace_back(AutoTuneOption{w, exeMode});
         }
     }
 }
@@ -41,42 +37,21 @@ ConvolutionKernel_b_fs_yx_fsv16::AutoTuneOption ConvolutionKernel_b_fs_yx_fsv16:
                                                                                           int /*autoTuneIndex*/) const {
     const convolution_params& cp = static_cast<const convolution_params&>(params);
     auto x = cp.output.X().v;
-    auto f = std::max(cp.inputs[0].Feature().v, cp.output.Feature().v);
-
-    /*if (x * f <= 256) {
-        if ( x <= 8 || x * f <= 128)
-            return { 2, 1, DEFAULT };
-        else
-            return { 4, 1, DEFAULT };
-    } else if (x * f <= 1536) {
-        return { 4, 1, DEFAULT };
-    } else {
-        if (x >= 8  && x < 12 && x * f < 2600)
-            return { 4, 1, DEFAULT };
-        else if (x < 12 && x * f < 8192)
-            return { 8, 1, DEFAULT };
-        else
-            return { 8, 1, AGE_BASED };
-    }*/
-    // if (x >= 8) return { 8, 2, AGE_BASED };
+    auto f = cp.output.Feature().v;
     if (x * f <= 256) {
         if ( x <= 8 || x * f <= 128)
-            return { 2, 1, DEFAULT };
+            return { 2, DEFAULT };
         else
-            return { 4, 1, DEFAULT };
+            return { 4, DEFAULT };
     } else if (x * f <= 1536) {
-        return { 4, 1, DEFAULT };
+        return { 4, DEFAULT };
     } else {
         if (x >= 8  && x < 12 && x * f < 2600)
-            return { 4, 1, DEFAULT };
+            return { 4, DEFAULT };
         else if (x < 12 && x * f < 8192)
-            return { 8, 1, DEFAULT };
-        else if (x >= 48 && f >= 256 && cp.output.Feature().v % feature_block_size == 0)
-            return { 8, 2, AGE_BASED };
-        else if (x >= 96 && f >= 256 && cp.output.Feature().v % feature_block_size == 0)
-            return { 8, 4, AGE_BASED };
+            return { 8, DEFAULT };
         else
-            return { 8, 1, AGE_BASED };
+            return { 8, AGE_BASED };
     }
 }
 
@@ -121,30 +96,19 @@ ConvolutionKernelBase::DispatchData ConvolutionKernel_b_fs_yx_fsv16::SetDefault(
 
     auto autoTune = GetAutoTuneOptions(params, autoTuneIndex);
     kd.cldnnStyle.blockWidth = autoTune.blockWidth;
-    output_block_num = autoTune.blockNum;
 
     auto x = out.X().v;
     auto y = out.Y().v;
     auto f = out.Feature().v;
     auto b = out.Batch().v;
 
-    if (b > 1) {
-        kd.gws0 = CeilDiv(x, autoTune.blockWidth * autoTune.blockNum) * y;
-        kd.gws1 = Align(f, sub_group_size);
-        kd.gws2 = b;
+    kd.gws0 = CeilDiv(x, autoTune.blockWidth) * y;
+    kd.gws1 = Align(f, sub_group_size);
+    kd.gws2 = b;
 
-        kd.lws0 = 1;
-        kd.lws1 = sub_group_size;
-        kd.lws2 = 1;
-    } else {
-        kd.gws0 = Align(f, sub_group_size);
-        kd.gws1 = CeilDiv(x, autoTune.blockWidth * autoTune.blockNum);
-        kd.gws2 = y; 
-
-        kd.lws0 = sub_group_size;
-        kd.lws1 = 1;
-        kd.lws2 = 1;
-    }
+    kd.lws0 = 1;
+    kd.lws1 = sub_group_size;
+    kd.lws2 = 1;
 
     if (b == 1)
         kd.efficiency = FORCE_PRIORITY_2;
@@ -199,85 +163,29 @@ JitConstants ConvolutionKernel_b_fs_yx_fsv16::GetJitConstants(const convolution_
     auto blockWidth = runInfo.cldnnStyle.blockWidth;
     if (!params.fused_ops.empty()) {
         auto input_dt = GetActivationType(params);
-        FusedOpsConfiguration conf_vec8_0 = { "_VEC8_0",
-                                              {"b", "(f_block*16)", "y", "x"},
-                                              "dst[0]",
-                                              input_dt,
-                                              blockWidth,
-                                              LoadType::LT_ALIGNED_READ,
-                                              BoundaryCheck::ENABLED,
-                                              IndexType::TENSOR_COORD,
-                                              Tensor::DataChannelName::X };
-        FusedOpsConfiguration conf_vec8_1 = { "_VEC8_1",
+        FusedOpsConfiguration conf_vec = { "_VEC",
                                            {"b", "(f_block*16)", "y", "x"},
-                                           "dst[1]",
-                                           input_dt,
-                                           blockWidth,
-                                           LoadType::LT_ALIGNED_READ,
-                                           BoundaryCheck::ENABLED,
-                                           IndexType::TENSOR_COORD,
-                                           Tensor::DataChannelName::X };                                   
-        FusedOpsConfiguration conf_vec8_2 = { "_VEC8_2",
-                                           {"b", "(f_block*16)", "y", "x"},
-                                           "dst[2]",
+                                           "dst",
                                            input_dt,
                                            blockWidth,
                                            LoadType::LT_ALIGNED_READ,
                                            BoundaryCheck::ENABLED,
                                            IndexType::TENSOR_COORD,
                                            Tensor::DataChannelName::X };
-        FusedOpsConfiguration conf_vec8_3 = { "_VEC8_3",
-                                           {"b", "(f_block*16)", "y", "x"},
-                                           "dst[3]",
-                                           input_dt,
-                                           blockWidth,
-                                           LoadType::LT_ALIGNED_READ,
-                                           BoundaryCheck::ENABLED,
-                                           IndexType::TENSOR_COORD,
-                                           Tensor::DataChannelName::X };                                   
-        FusedOpsConfiguration conf_vec4 = { "_VEC4",
-                                           {"b", "(f_block*16)", "y", "x"},
-                                           "dst0123",
-                                           input_dt,
-                                           4,
-                                           LoadType::LT_ALIGNED_READ,
-                                           BoundaryCheck::ENABLED,
-                                           IndexType::TENSOR_COORD,
-                                           Tensor::DataChannelName::X }; 
-        FusedOpsConfiguration conf_vec2 = { "_VEC2",
-                                           {"b", "(f_block*16)", "y", "x"},
-                                           "dst01",
-                                           input_dt,
-                                           2,
-                                           LoadType::LT_ALIGNED_READ,
-                                           BoundaryCheck::ENABLED,
-                                           IndexType::TENSOR_COORD,
-                                           Tensor::DataChannelName::X };
-        FusedOpsConfiguration conf_vec1 = { "_VEC1",
-                                           {"b", "(f_block*16)", "y", "x"},
-                                           "dst0",
-                                           input_dt,
-                                           1,
-                                           LoadType::LT_ALIGNED_READ,
-                                           BoundaryCheck::ENABLED,
-                                           IndexType::TENSOR_COORD,
-                                           Tensor::DataChannelName::X };                                                                                                            
         FusedOpsConfiguration conf_scalar = { "_SCALAR",
                                               {"b", "(f_block*16)", "y", "(x+i)"},
-                                              "dst_scalar[i]",
+                                              "dst[i]",
                                               input_dt,
                                               1,
                                               LoadType::LT_ALIGNED_READ,
                                               BoundaryCheck::ENABLED,
                                               IndexType::TENSOR_COORD,
                                               Tensor::DataChannelName::X };
-        jit.Merge(MakeFusedOpsJitConstants(params, {conf_vec8_0, conf_vec8_1, conf_vec8_2, conf_vec8_3, conf_vec4, conf_vec2, conf_vec1, conf_scalar}));
+        jit.Merge(MakeFusedOpsJitConstants(params, {conf_vec, conf_scalar}));
     }
 
-    size_t input_line_size = std::min(params.stride.x * (blockWidth * output_block_num - 1) + (params.weights.X().v - 1)*params.dilation.x + 1,
+    size_t input_line_size = std::min(params.stride.x * (blockWidth - 1) + (params.weights.X().v - 1)*params.dilation.x + 1,
                                       input.X().v + input.X().pad.Total());
-
-    if (output_block_num >= 2) printf("output_block_num = %d: f = %d x = %d y = %d\n", (int)output_block_num, (int)output.Feature().v, (int)output.X().v, (int)output.Y().v);
 
     auto outFeaturesPerGroup = output.Feature().v / params.groups;
     auto inFeaturesPerGroup = input.Feature().v / params.groups;
@@ -290,12 +198,10 @@ JitConstants ConvolutionKernel_b_fs_yx_fsv16::GetJitConstants(const convolution_
         jit.AddConstant(MakeJitConstant("MULTIPLE_GROUPS_INPUT_PRELOAD", 1));
 
     jit.AddConstant(MakeJitConstant("OUTPUT_X_BLOCK_SIZE", blockWidth));
-    jit.AddConstant(MakeJitConstant("OUTPUT_X_BLOCK_NUM", output_block_num));
     jit.AddConstant(MakeJitConstant("INPUT_LINE_SIZE", input_line_size));
     jit.AddConstant(MakeJitConstant("SUB_GROUP_SIZE", sub_group_size));
-    jit.AddConstant(MakeJitConstant("X_BLOCKS", CeilDiv(output.X().v, blockWidth * output_block_num)));
+    jit.AddConstant(MakeJitConstant("X_BLOCKS", CeilDiv(output.X().v, blockWidth)));
     jit.AddConstant(MakeJitConstant("IC_BLOCKS", CeilDiv(inFeaturesPerGroup, feature_block_size)));
-    jit.AddConstant(MakeJitConstant("BATCH_IS_ONE", output.Batch().v == 1));
     if (params.output.Feature().v % feature_block_size != 0) {
         jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS", 1));
     }

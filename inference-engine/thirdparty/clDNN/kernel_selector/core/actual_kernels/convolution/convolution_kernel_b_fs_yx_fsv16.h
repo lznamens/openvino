@@ -54,7 +54,7 @@ protected:
 private:
     struct AutoTuneOption {
         size_t blockWidth;
-        size_t blockNum;
+        // size_t blockNum;
         std::string exeMode;
     };
 
