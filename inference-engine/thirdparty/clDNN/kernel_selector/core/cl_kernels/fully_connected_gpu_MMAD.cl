@@ -37,25 +37,26 @@ KERNEL(fully_connected_gpu_MMAD)(
 #endif
     )
 {
-#if OUTPUT_BATCH_NUM == 1
-    const uint f = (uint)get_global_id(0);
-    const uint b = 0;
-#else
-    const uint f = (uint)get_global_id(0);
-    const uint b = (uint)get_global_id(1);
-#endif
+    const uint lid0 = (uint)get_local_id(0);
+    const uint feature_per_wg = (uint)get_local_size(0) / SLM_DIV_FACTOR;
+    const uint feature = (uint)get_group_id(0) * feature_per_wg + (uint)get_global_id(0) % feature_per_wg;
+    const uint feature_block = lid0 / feature_per_wg;
+    const uint feature_div_factor = FEATURE_BLOCKS_COUNT / SLM_DIV_FACTOR;
+    const uint batch = (uint)get_global_id(1);
 
     int dotProd = 0;
 
-    const uint filter_offset = FILTER_GET_OFFSET(f);
+    const uint filter_offset = FILTER_GET_OFFSET(feature);
 #if INPUT0_DIMS == 5
-    const uint input_offset = INPUT0_GET_INDEX(b, 0, 0, 0, 0);
+    const uint input_offset = INPUT0_GET_INDEX(batch, 0, 0, 0, 0);
 #else
-    const uint input_offset = INPUT0_GET_INDEX(b, 0, 0, 0);
+    const uint input_offset = INPUT0_GET_INDEX(batch, 0, 0, 0);
 #endif
 
+    __local int partial_summ[WORK_GROUP_SIZE];
+
 #if SPATIAL_MAJOR
-    for (uint k = 0; k < FEATURE_BLOCKS_COUNT; ++k) {
+    for (uint k = feature_block * feature_div_factor; k < (feature_block + 1) * feature_div_factor; ++k) {
 #   if !SPLIT_SPATIAL
         for (uint spatial = 0; spatial < FILTER_SPATIAL_SIZE; ++spatial) {
 #   else
@@ -73,7 +74,7 @@ KERNEL(fully_connected_gpu_MMAD)(
     for (uint xi = 0; xi < FILTER_SIZE_X; ++xi) {
         const uint spatial = xi + yi * FILTER_SIZE_X + zi * FILTER_SIZE_X * FILTER_SIZE_Y;
 #   endif
-        for (uint k = 0; k < FEATURE_BLOCKS_COUNT; ++k) {
+        for (uint k = feature_block * feature_div_factor; k < (feature_block + 1) * feature_div_factor; ++k) {
 #endif
 #if !SPLIT_SPATIAL
             uint input_idx = input_offset + spatial * MMAD_INPUT_SPATIAL_PITCH + k * MMAD_INPUT_FBLOCK_PITCH;
@@ -102,8 +103,16 @@ KERNEL(fully_connected_gpu_MMAD)(
         }
     }
 
+    partial_summ[lid0] = dotProd;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (feature_block == 0) {
+        __attribute__((opencl_unroll_hint(SLM_DIV_FACTOR - 1)))
+        for (uint i = 1; i < SLM_DIV_FACTOR; i++)
+            dotProd += partial_summ[lid0 % feature_per_wg + i * feature_per_wg];
+
 #if HAS_FEATURE_LEFTOVERS
-        const uint lid = get_sub_group_local_id();
+        const uint sglid = get_sub_group_local_id();
 #if SPATIAL_MAJOR
 #if !SPLIT_SPATIAL
         for (uint spatial = 0; spatial < FILTER_SPATIAL_SIZE; ++spatial) {
@@ -134,8 +143,8 @@ KERNEL(fully_connected_gpu_MMAD)(
 
             MAKE_VECTOR_TYPE(INPUT0_TYPE, 4) input_data_u = (0, 0, 0, 0);
             for (uint i = 0; i < 4; i++) {
-                if (FEATURE_BLOCKS_COUNT*32 + lid*4 + i < INPUT0_FEATURE_NUM) {
-                    input_data_u[i] = input[input_idx + (lid*4 + i)*INPUT0_FEATURE_PITCH];
+                if (FEATURE_BLOCKS_COUNT * 32 + sglid * 4 + i < INPUT0_FEATURE_NUM) {
+                    input_data_u[i] = input[input_idx + (sglid * 4 + i) * INPUT0_FEATURE_PITCH];
                 }
             }
             INPUT_PACKED_TYPE input_data = AS_TYPE(INPUT_PACKED_TYPE, input_data_u);
@@ -157,14 +166,14 @@ KERNEL(fully_connected_gpu_MMAD)(
         }
 #endif  // HAS_FEATURE_LEFTOVERS
 
-    if (OUTPUT_FEATURE_NUM % SUB_GROUP_SIZE != 0 && f >= OUTPUT_FEATURE_NUM)
+    if (OUTPUT_FEATURE_NUM % SUB_GROUP_SIZE != 0 && feature >= OUTPUT_FEATURE_NUM)
         return;
 
 #if BIAS_TERM
 #if   BIAS_PER_OUTPUT
-    const uint bias_index = GET_DATA_INDEX(BIAS, b, f, 0, 0);
+    const uint bias_index = GET_DATA_INDEX(BIAS, batch, feature, 0, 0);
 #elif BIAS_PER_OFM
-    const uint bias_index = f;
+    const uint bias_index = feature;
 #endif
 
     float dequantized = (float)dotProd + biases[bias_index];
@@ -172,7 +181,7 @@ KERNEL(fully_connected_gpu_MMAD)(
     float dequantized = (float)dotProd;
 #endif
 
-    const uint out_idx = OUTPUT_GET_INDEX(b, f, 0, 0);
+    const uint out_idx = OUTPUT_GET_INDEX(batch, feature, 0, 0);
 
 #if HAS_FUSED_OPS
     FUSED_OPS;
@@ -182,6 +191,7 @@ KERNEL(fully_connected_gpu_MMAD)(
 #else
     output[out_idx] = TO_OUTPUT_TYPE(dequantized);
 #endif
+    }
 }
 
 #undef INPUT_PACKED_TYPE_8
