@@ -69,6 +69,8 @@ FullyConnectedKernelMMAD::FullyConnectedTuningData FullyConnectedKernelMMAD::Get
     tuning_data.feature_blocks_count = input.GetLayout() == DataLayout::bfyx && input.Feature().v % 32 != 0 ?
                                        input.Feature().v / 32 : CeilDiv(input.Feature().v, 32);
 
+    if (tuning_data.feature_blocks_count > 4) tuning_data.sub_group_size = 16;
+
     if (tuning_data.feature_blocks_count)
         while (tuning_data.feature_blocks_count % (tuning_data.slm_div_factor * 2) == 0 &&
                (tuning_data.slm_div_factor * 2 <= params.engineInfo.maxWorkGroupSize / tuning_data.sub_group_size))
@@ -121,10 +123,18 @@ JitConstants FullyConnectedKernelMMAD::GetJitConstants(const fully_connected_par
     auto& weights = params.weights;
 
     jit.AddConstant(MakeJitConstant("SUB_GROUP_SIZE", tuning_data.sub_group_size));
-    if (input.GetDims().size() == 5) {
-        jit.AddConstant(MakeJitConstant("FILTER_GET_OFFSET(f)", "GET_FILTER_OS_IS_YX_ISA8_OSV8_ISV4_INDEX(FILTER, f, 0, 0, 0)"));
+    if (tuning_data.sub_group_size == 8) {
+        if (input.GetDims().size() == 5) {
+            jit.AddConstant(MakeJitConstant("FILTER_GET_OFFSET(f)", "GET_FILTER_OS_IS_YX_ISA8_OSV8_ISV4_INDEX(FILTER, f, 0, 0, 0)"));
+        } else {
+            jit.AddConstant(MakeJitConstant("FILTER_GET_OFFSET(f)", "GET_FILTER_OS_IS_ZYX_ISA8_OSV8_ISV4_INDEX(FILTER, f, 0, 0, 0, 0)"));
+        }
     } else {
-        jit.AddConstant(MakeJitConstant("FILTER_GET_OFFSET(f)", "GET_FILTER_OS_IS_ZYX_ISA8_OSV8_ISV4_INDEX(FILTER, f, 0, 0, 0, 0)"));
+        if (input.GetDims().size() == 5) {
+            jit.AddConstant(MakeJitConstant("FILTER_GET_OFFSET(f)", "GET_FILTER_OS_IS_YX_ISA8_OSV16_ISV4_INDEX(FILTER, f, 0, 0, 0)"));
+        } else {
+            jit.AddConstant(MakeJitConstant("FILTER_GET_OFFSET(f)", "GET_FILTER_OS_IS_ZYX_ISA8_OSV16_ISV4_INDEX(FILTER, f, 0, 0, 0, 0)"));
+        }
     }
 
     Datatype input_packed_type = Datatype::INT32;
@@ -200,10 +210,9 @@ KernelsData FullyConnectedKernelMMAD::GetKernelsData(const Params& params, const
     auto fc_params = static_cast<const fully_connected_params&>(params);
     auto& input = fc_params.inputs[0];
 
-    auto w_layout = WeightsLayout::os_is_yx_isa8_osv8_isv4;
-    if (input.GetDims().size() == 5) {
-        w_layout = WeightsLayout::os_is_zyx_isa8_osv8_isv4;
-    }
+    auto w_layout = GetTuningParams(fc_params).sub_group_size == 16 ?
+                    input.GetDims().size() == 4 ? WeightsLayout::os_is_yx_isa8_osv16_isv4 : WeightsLayout::os_is_zyx_isa8_osv16_isv4 :
+                    input.GetDims().size() == 4 ? WeightsLayout::os_is_yx_isa8_osv8_isv4 : WeightsLayout::os_is_zyx_isa8_osv8_isv4;
 
     KernelsData res = {};
     for (size_t i = 0; i < autoTuneOptions.size(); i++) {

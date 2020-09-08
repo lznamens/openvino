@@ -44,7 +44,8 @@ protected:
     std::vector<FusedOpType> GetSupportedFusedOps() const override {
         return { FusedOpType::QUANTIZE,
                  FusedOpType::SCALE,
-                 FusedOpType::ACTIVATION };
+                 FusedOpType::ACTIVATION,
+                 FusedOpType::ELTWISE };
     }
     bool Validate(const Params& params, const optional_params& options) const override;
     FullyConnectedTuningData GetTuningParams(const fully_connected_params& params) const;
