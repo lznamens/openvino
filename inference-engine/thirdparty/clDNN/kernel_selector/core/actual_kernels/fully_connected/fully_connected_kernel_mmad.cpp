@@ -61,27 +61,39 @@ bool FullyConnectedKernelMMAD::Validate(const Params& params, const optional_par
     return true;
 }
 
-FullyConnectedKernelMMAD::FullyConnectedTuningData FullyConnectedKernelMMAD::SetTuningParams(const fully_connected_params& params) const {
+FullyConnectedKernelMMAD::FullyConnectedTuningData FullyConnectedKernelMMAD::GetTuningParams(const fully_connected_params& params) const {
     FullyConnectedTuningData tuning_data;
 
     const auto& input = params.inputs[0];
 
-    size_t feature_blocks_count = input.GetLayout() == DataLayout::bfyx && input.Feature().v % 32 != 0 ?
-                                  input.Feature().v / 32 : CeilDiv(input.Feature().v, 32);
+    tuning_data.feature_blocks_count = input.GetLayout() == DataLayout::bfyx && input.Feature().v % 32 != 0 ?
+                                       input.Feature().v / 32 : CeilDiv(input.Feature().v, 32);
 
-    if (feature_blocks_count)
-        while (feature_blocks_count % (tuning_data.slm_div_factor * 2) == 0 &&
+    if (tuning_data.feature_blocks_count)
+        while (tuning_data.feature_blocks_count % (tuning_data.slm_div_factor * 2) == 0 &&
                (tuning_data.slm_div_factor * 2 <= params.engineInfo.maxWorkGroupSize / tuning_data.sub_group_size))
             tuning_data.slm_div_factor *= 2;
 
     tuning_data.work_group_size = tuning_data.slm_div_factor * tuning_data.sub_group_size;
+
+    tuning_data.full_unroll_factor = tuning_data.feature_blocks_count / tuning_data.slm_div_factor;
+
+    size_t temp_unroll_factor = 9;
+
+    if (tuning_data.full_unroll_factor > 9) {
+        while (tuning_data.full_unroll_factor % temp_unroll_factor)
+            temp_unroll_factor--;
+        tuning_data.unroll_factor = temp_unroll_factor;
+    } else {
+        tuning_data.unroll_factor = tuning_data.full_unroll_factor;
+    }
 
     return tuning_data;
 }
 
 FullyConnectedKernelMMAD::DispatchData FullyConnectedKernelMMAD::SetDefault(const fully_connected_params& params,
                                                                             int) const {
-    FullyConnectedTuningData tuning_data = SetTuningParams(params);
+    FullyConnectedTuningData tuning_data = GetTuningParams(params);
     auto runInfo = Parent::SetDefault(params);
     const auto& output = params.output;
 
@@ -101,7 +113,7 @@ FullyConnectedKernelMMAD::DispatchData FullyConnectedKernelMMAD::SetDefault(cons
 
 JitConstants FullyConnectedKernelMMAD::GetJitConstants(const fully_connected_params& params,
                                                        const DispatchData& runInfo) const {
-    FullyConnectedTuningData tuning_data = SetTuningParams(params);
+    FullyConnectedTuningData tuning_data = GetTuningParams(params);
 
     auto jit = Parent::GetJitConstants(params, runInfo);
 
@@ -134,7 +146,7 @@ JitConstants FullyConnectedKernelMMAD::GetJitConstants(const fully_connected_par
     jit.Merge(MakeTypeJitConstants(filter_packed_type, "FILTER_PACKED"));
 
     auto filter_spatial_size = weights.X().v * weights.Y().v * weights.Z().v;
-    int filter_spatial_pitch = 4 * 8 * 8;
+    int filter_spatial_pitch = 4 * 8 * tuning_data.sub_group_size;
 
     jit.AddConstant(MakeJitConstant("FILTER_SPATIAL_SIZE", filter_spatial_size));
     jit.AddConstant(MakeJitConstant("MMAD_FILTER_SPATIAL_PITCH", filter_spatial_pitch));
@@ -155,29 +167,12 @@ JitConstants FullyConnectedKernelMMAD::GetJitConstants(const fully_connected_par
 
     jit.AddConstant(MakeJitConstant("SLM_DIV_FACTOR", tuning_data.slm_div_factor));
 
-    size_t feature_blocks_count;
-    size_t temp_unroll_factor = 9, unroll_factor, full_unroll_factor;
-
-    if (input.GetLayout() == DataLayout::bfyx && input.Feature().v % 32 != 0) {
-        feature_blocks_count = input.Feature().v / 32;
+    if (input.GetLayout() == DataLayout::bfyx && input.Feature().v % 32 != 0)
         jit.AddConstant(MakeJitConstant("HAS_FEATURE_LEFTOVERS", true));
-    } else {
-        feature_blocks_count = CeilDiv(input.Feature().v, 32);
-    }
 
-    full_unroll_factor = feature_blocks_count / tuning_data.slm_div_factor;
-
-    if (full_unroll_factor > 9) {
-        while (full_unroll_factor % temp_unroll_factor)
-            temp_unroll_factor--;
-        unroll_factor = temp_unroll_factor;
-    } else {
-        unroll_factor = full_unroll_factor;
-    }
-
-    jit.AddConstant(MakeJitConstant("FEATURE_BLOCKS_COUNT", feature_blocks_count));
-    jit.AddConstant(MakeJitConstant("UNROLL_FACTOR", unroll_factor));
-    jit.AddConstant(MakeJitConstant("FULL_UNROLL_FACTOR", full_unroll_factor));
+    jit.AddConstant(MakeJitConstant("FEATURE_BLOCKS_COUNT", tuning_data.feature_blocks_count));
+    jit.AddConstant(MakeJitConstant("UNROLL_FACTOR", tuning_data.unroll_factor));
+    jit.AddConstant(MakeJitConstant("FULL_UNROLL_FACTOR", tuning_data.full_unroll_factor));
     jit.AddConstant(MakeJitConstant("WORK_GROUP_SIZE", tuning_data.work_group_size));
 
     jit.AddConstant(MakeJitConstant("MMAD_INPUT_SPATIAL_PITCH", input_x_pitch));

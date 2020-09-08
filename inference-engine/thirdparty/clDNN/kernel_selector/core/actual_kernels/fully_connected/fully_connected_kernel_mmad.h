@@ -30,9 +30,12 @@ public:
     ParamsKey GetSupportedKey() const override;
 
     struct FullyConnectedTuningData {
-        const size_t sub_group_size = 8;
+        size_t sub_group_size = 8;
         size_t slm_div_factor = 1;
         size_t work_group_size = 1;
+        size_t feature_blocks_count;
+        size_t unroll_factor;
+        size_t full_unroll_factor;
     };
 
 protected:
@@ -44,6 +47,6 @@ protected:
                  FusedOpType::ACTIVATION };
     }
     bool Validate(const Params& params, const optional_params& options) const override;
-    FullyConnectedTuningData SetTuningParams(const fully_connected_params& params) const;
+    FullyConnectedTuningData GetTuningParams(const fully_connected_params& params) const;
 };
 }  // namespace kernel_selector
