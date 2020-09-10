@@ -30,6 +30,7 @@ public:
     ParamsKey GetSupportedKey() const override;
 
     struct FullyConnectedTuningData {
+        const size_t pack_size = 4;
         size_t sub_group_size = 8;
         size_t slm_div_factor = 1;
         size_t work_group_size = 1;

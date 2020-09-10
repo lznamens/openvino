@@ -627,17 +627,17 @@ inline uint FUNC(get_giy_xs_os_xsv2_osv_index)(uint g, uint o, uint i, uint y, u
 inline uint FUNC(get_os_is_yx_isa8_osv8_isv4_index)(uint o, uint i, uint y, uint x, uint size_x, uint size_y, uint size_ifm, uint size_ofm, uint offset)
 {
     const uint f_32_aligned = ((size_ifm + 31)/32) * 32;
-	const uint isv2_idx = i % 4;
-	const uint osv_idx = o % 8;
-	const uint isv1_idx = (i / 4) % 8;
-	const uint is_idx = i / 32;
-	const uint os_idx = o / 8;
+    const uint isv2_idx = i % 4;
+    const uint osv_idx = o % 8;
+    const uint isv1_idx = (i / 4) % 8;
+    const uint is_idx = i / 32;
+    const uint os_idx = o / 8;
 
-	size_t idx = offset + isv2_idx + 4 * (osv_idx + 8 * isv1_idx);
-	idx += x * 4 * 8 * 8;
-	idx += y * size_x * 4 * 8 * 8;
-	idx += is_idx * size_y * size_x * 4 * 8 * 8;
-	idx += os_idx * (f_32_aligned/32) * size_y * size_x * 4 * 8 * 8;
+    size_t idx = offset + isv2_idx + 4 * (osv_idx + 8 * isv1_idx);
+    idx += x * 4 * 8 * 8;
+    idx += y * size_x * 4 * 8 * 8;
+    idx += is_idx * size_y * size_x * 4 * 8 * 8;
+    idx += os_idx * (f_32_aligned/32) * size_y * size_x * 4 * 8 * 8;
 
     return idx;
 }
@@ -653,17 +653,17 @@ inline uint FUNC(get_os_is_yx_isa8_osv8_isv4_index)(uint o, uint i, uint y, uint
 inline uint FUNC(get_os_is_yx_isa8_osv16_isv4_index)(uint o, uint i, uint y, uint x, uint size_x, uint size_y, uint size_ifm, uint size_ofm, uint offset)
 {
     const uint f_32_aligned = ((size_ifm + 31)/32) * 32;
-	const uint isv2_idx = i % 4;
-	const uint osv_idx = o % 16;
-	const uint isv1_idx = (i / 4) % 8;
-	const uint is_idx = i / 32;
-	const uint os_idx = o / 16;
+    const uint isv2_idx = i % 4;
+    const uint osv_idx = o % 16;
+    const uint isv1_idx = (i / 4) % 8;
+    const uint is_idx = i / 32;
+    const uint os_idx = o / 16;
 
-	size_t idx = offset + isv2_idx + 4 * (osv_idx + 8 * isv1_idx);
-	idx += x * 4 * 8 * 16;
-	idx += y * size_x * 4 * 8 * 16;
-	idx += is_idx * size_y * size_x * 4 * 8 * 16;
-	idx += os_idx * (f_32_aligned/32) * size_y * size_x * 4 * 8 * 16;
+    size_t idx = offset + isv2_idx + 4 * (osv_idx + 16 * isv1_idx);
+    idx += x * 4 * 8 * 16;
+    idx += y * size_x * 4 * 8 * 16;
+    idx += is_idx * size_y * size_x * 4 * 8 * 16;
+    idx += os_idx * (f_32_aligned/32) * size_y * size_x * 4 * 8 * 16;
 
     return idx;
 }
@@ -718,7 +718,7 @@ inline uint FUNC(get_os_is_zyx_isa8_osv16_isv4_index)(uint o, uint i, uint z, ui
     const uint is_idx = i / 32;
     const uint os_idx = o / 16;
 
-    size_t idx = offset + isv2_idx + 4 * (osv_idx + 8 * isv1_idx);
+    size_t idx = offset + isv2_idx + 4 * (osv_idx + 16 * isv1_idx);
     idx += x * 4 * 8 * 16;
     idx += y * size_x * 4 * 8 * 16;
     idx += z * size_y * size_x * 4 * 8 * 16;
@@ -743,17 +743,17 @@ inline uint FUNC(get_os_is_yx_isa8_osv8_isv4_swizzled_by_4_index)(uint o, uint i
     const uint o_swizzled = (o % 4) * 8 + ((o % 32) / 4) + (o / 32) * 32;
 
     const uint f_32_aligned = ((size_ifm + 31)/32) * 32;
-	const uint isv2_idx = i % 4;
-	const uint osv_idx = o_swizzled % 8;
-	const uint isv1_idx = (i / 4) % 8;
-	const uint is_idx = i / 32;
-	const uint os_idx = o_swizzled / 8;
+    const uint isv2_idx = i % 4;
+    const uint osv_idx = o_swizzled % 8;
+    const uint isv1_idx = (i / 4) % 8;
+    const uint is_idx = i / 32;
+    const uint os_idx = o_swizzled / 8;
 
-	size_t idx = offset + isv2_idx + 4 * (osv_idx + 8 * isv1_idx);
-	idx += x * 4 * 8 * 8;
-	idx += y * size_x * 4 * 8 * 8;
-	idx += is_idx * size_y * size_x * 4 * 8 * 8;
-	idx += os_idx * (f_32_aligned/32) * size_y * size_x * 4 * 8 * 8;
+    size_t idx = offset + isv2_idx + 4 * (osv_idx + 8 * isv1_idx);
+    idx += x * 4 * 8 * 8;
+    idx += y * size_x * 4 * 8 * 8;
+    idx += is_idx * size_y * size_x * 4 * 8 * 8;
+    idx += os_idx * (f_32_aligned/32) * size_y * size_x * 4 * 8 * 8;
 
     return idx;
 }

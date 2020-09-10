@@ -66,10 +66,20 @@ FullyConnectedKernelMMAD::FullyConnectedTuningData FullyConnectedKernelMMAD::Get
 
     const auto& input = params.inputs[0];
 
-    tuning_data.feature_blocks_count = input.GetLayout() == DataLayout::bfyx && input.Feature().v % 32 != 0 ?
-                                       input.Feature().v / 32 : CeilDiv(input.Feature().v, 32);
+    if (input.X().v == 1 && input.Y().v == 1 && input.Z().v == 1 && input.Batch().v == 1 && input.Feature().v >= 256 && input.Feature().v % 64 == 0)
+        tuning_data.sub_group_size = 16;
+    else
+        tuning_data.sub_group_size = 8;
 
-    if (tuning_data.feature_blocks_count > 4) tuning_data.sub_group_size = 16;
+    printf("sub_group_size = %d\n", (int)tuning_data.sub_group_size);
+
+    size_t sub_group_pack_size = tuning_data.sub_group_size * tuning_data.pack_size;
+
+    tuning_data.feature_blocks_count = input.GetLayout() == DataLayout::bfyx && input.Feature().v % sub_group_pack_size != 0 ?
+                                       input.Feature().v / sub_group_pack_size :
+                                       input.GetLayout() != DataLayout::bfyx && tuning_data.sub_group_size == 16 ?
+                                       CeilDiv(input.Feature().v, 32) % 2 == 0 ? CeilDiv(input.Feature().v, 64) : CeilDiv(input.Feature().v, 64) - 1 :
+                                       CeilDiv(input.Feature().v, sub_group_pack_size);
 
     if (tuning_data.feature_blocks_count)
         while (tuning_data.feature_blocks_count % (tuning_data.slm_div_factor * 2) == 0 &&
@@ -80,15 +90,19 @@ FullyConnectedKernelMMAD::FullyConnectedTuningData FullyConnectedKernelMMAD::Get
 
     tuning_data.full_unroll_factor = tuning_data.feature_blocks_count / tuning_data.slm_div_factor;
 
-    size_t temp_unroll_factor = 9;
-
-    if (tuning_data.full_unroll_factor > 9) {
-        while (tuning_data.full_unroll_factor % temp_unroll_factor)
-            temp_unroll_factor--;
-        tuning_data.unroll_factor = temp_unroll_factor;
+    if (tuning_data.sub_group_size == 16) {
+        tuning_data.unroll_factor = 1;
     } else {
-        tuning_data.unroll_factor = tuning_data.full_unroll_factor;
-    }
+        size_t temp_unroll_factor = 9;
+
+        if (tuning_data.full_unroll_factor > 9) {
+            while (tuning_data.full_unroll_factor % temp_unroll_factor)
+                temp_unroll_factor--;
+            tuning_data.unroll_factor = temp_unroll_factor;
+        } else {
+            tuning_data.unroll_factor = tuning_data.full_unroll_factor;
+        }
+    }    
 
     return tuning_data;
 }
@@ -122,6 +136,8 @@ JitConstants FullyConnectedKernelMMAD::GetJitConstants(const fully_connected_par
     auto& input = params.inputs[0];
     auto& weights = params.weights;
 
+    size_t sub_group_pack_size = tuning_data.sub_group_size * tuning_data.pack_size;
+
     jit.AddConstant(MakeJitConstant("SUB_GROUP_SIZE", tuning_data.sub_group_size));
     if (tuning_data.sub_group_size == 8) {
         if (input.GetDims().size() == 5) {
@@ -137,50 +153,38 @@ JitConstants FullyConnectedKernelMMAD::GetJitConstants(const fully_connected_par
         }
     }
 
-    Datatype input_packed_type = Datatype::INT32;
-    Datatype filter_packed_type = Datatype::INT32;
-
-    if (input.GetDType() == Datatype::UINT8) {
-        input_packed_type = Datatype::UINT32;
-    } else if (input.GetDType() == Datatype::INT8) {
-        input_packed_type = Datatype::INT32;
-    }
-
-    if (weights.GetDType() == WeightsType::UINT8) {
-        filter_packed_type = Datatype::UINT32;
-    } else if (weights.GetDType() == WeightsType::INT8) {
-        filter_packed_type = Datatype::INT32;
-    }
-
-    jit.Merge(MakeTypeJitConstants(input_packed_type, "INPUT_PACKED"));
-    jit.Merge(MakeTypeJitConstants(filter_packed_type, "FILTER_PACKED"));
+    jit.Merge(MakeTypeJitConstants(input.GetDType() == Datatype::UINT8 ? Datatype::UINT32 : Datatype::INT32, "INPUT_PACKED"));
+    jit.Merge(MakeTypeJitConstants(weights.GetDType() == WeightsType::UINT8 ? Datatype::UINT32 : Datatype::INT32, "FILTER_PACKED"));
 
     auto filter_spatial_size = weights.X().v * weights.Y().v * weights.Z().v;
-    int filter_spatial_pitch = 4 * 8 * tuning_data.sub_group_size;
+    auto filter_spatial_pitch = 8 * sub_group_pack_size;
+    auto filter_fblock_pitch = tuning_data.sub_group_size == 8 ?
+                               filter_spatial_size * filter_spatial_pitch :
+                               filter_spatial_size * filter_spatial_pitch * 2;
 
     jit.AddConstant(MakeJitConstant("FILTER_SPATIAL_SIZE", filter_spatial_size));
     jit.AddConstant(MakeJitConstant("MMAD_FILTER_SPATIAL_PITCH", filter_spatial_pitch));
-    jit.AddConstant(MakeJitConstant("MMAD_FILTER_FBLOCK_PITCH", filter_spatial_size * filter_spatial_pitch));
+    jit.AddConstant(MakeJitConstant("MMAD_FILTER_FBLOCK_PITCH", filter_fblock_pitch));
 
     size_t input_x_pitch = input.X().pitch;
     size_t input_y_pitch = input.Y().pitch;
     size_t input_z_pitch = input.Z().pitch;
 
     if (input.GetLayout() == DataLayout::bfyx) {
-        jit.AddConstant(MakeJitConstant("MMAD_INPUT_FBLOCK_PITCH", 32));
+        jit.AddConstant(MakeJitConstant("MMAD_INPUT_FBLOCK_PITCH", sub_group_pack_size));
     } else if (input.GetLayout() == DataLayout::b_fs_yx_fsv32 || input.GetLayout() == DataLayout::b_fs_zyx_fsv32) {
         input_x_pitch = 32;
         input_y_pitch *= 32;
         input_z_pitch *= 32;
-        jit.AddConstant(MakeJitConstant("MMAD_INPUT_FBLOCK_PITCH", input.Feature().pitch * 32));
+        jit.AddConstant(MakeJitConstant("MMAD_INPUT_FBLOCK_PITCH", input.Feature().pitch * sub_group_pack_size));
     }
 
-    jit.AddConstant(MakeJitConstant("SLM_DIV_FACTOR", tuning_data.slm_div_factor));
+    bool has_feature_leftovers = (input.GetLayout() == DataLayout::bfyx && input.Feature().v % sub_group_pack_size) ||
+                                 (input.GetLayout() != DataLayout::bfyx && tuning_data.sub_group_size == 16 && CeilDiv(input.Feature().v, 32) % 2);
 
-    if (input.GetLayout() == DataLayout::bfyx && input.Feature().v % 32 != 0)
-        jit.AddConstant(MakeJitConstant("HAS_FEATURE_LEFTOVERS", true));
-
+    jit.AddConstant(MakeJitConstant("HAS_FEATURE_LEFTOVERS", has_feature_leftovers));
     jit.AddConstant(MakeJitConstant("FEATURE_BLOCKS_COUNT", tuning_data.feature_blocks_count));
+    jit.AddConstant(MakeJitConstant("SLM_DIV_FACTOR", tuning_data.slm_div_factor));
     jit.AddConstant(MakeJitConstant("UNROLL_FACTOR", tuning_data.unroll_factor));
     jit.AddConstant(MakeJitConstant("FULL_UNROLL_FACTOR", tuning_data.full_unroll_factor));
     jit.AddConstant(MakeJitConstant("WORK_GROUP_SIZE", tuning_data.work_group_size));
