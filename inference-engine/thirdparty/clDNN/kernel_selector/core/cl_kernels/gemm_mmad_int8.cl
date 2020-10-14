@@ -28,6 +28,8 @@
 #define BLOCK_READ_CHAR4(ptr)   intel_sub_group_block_read_uc4((const __global uchar*)(ptr))
 #define BLOCK_SHUFFLE           intel_sub_group_shuffle
 
+#define OUTPUT_BLOCK_WRITE4(ptr, offset, val)   intel_sub_group_block_write4((__global uint*)(ptr) + (offset), as_uint4(val))
+
 #if SUB_GROUP_SIZE == 8
 #define MMAD                    MMAD_8x8
 #else // SUB_GROUP_SIZE == 8
@@ -502,117 +504,50 @@ KERNEL(gemm_mmad_int8)(
 #endif // !TRANSPOSE_INPUT0
     }
 
-    uint output_x = output_x_tile * TILE_SIZE_N + (uint)get_global_id(0);
+    uint output_x = output_x_tile * TILE_SIZE_N/* + (uint)get_global_id(0)*/;
 
 #if HAS_FUSED_OPS && FUSED_OPS_CAN_USE_PRELOAD
-    FUSED_OPS_PRELOAD0;
+    FUSED_OPS_PRELOAD_VEC;
 #endif // HAS_FUSED_OPS && FUSED_OPS_CAN_USE_PRELOAD
+
     for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-        ACTIVATION_TYPE dequantized = TO_ACTIVATION_TYPE(tile_output00[i]);
+        MAKE_VECTOR_TYPE(ACTIVATION_TYPE, 4) dequantized;
+        dequantized.s0 = TO_ACTIVATION_TYPE(tile_output00[i]);
+        dequantized.s1 = TO_ACTIVATION_TYPE(tile_output01[i]);
+        dequantized.s2 = TO_ACTIVATION_TYPE(tile_output02[i]);
+        dequantized.s3 = TO_ACTIVATION_TYPE(tile_output03[i]);
         dequantized *= TO_ACTIVATION_TYPE(ALPHA);
 #ifdef INPUT2_TYPE
-        dequantized += TO_ACTIVATION_TYPE(BETA) * tile_input20[i];
+        dequantized.s0 += TO_ACTIVATION_TYPE(BETA) * tile_input20[i];
+        dequantized.s1 += TO_ACTIVATION_TYPE(BETA) * tile_input21[i];
+        dequantized.s2 += TO_ACTIVATION_TYPE(BETA) * tile_input22[i];
+        dequantized.s3 += TO_ACTIVATION_TYPE(BETA) * tile_input23[i];
 #endif // INPUT2_TYPE
 
 #if HAS_FUSED_OPS
 #if FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS_CALC0;
+        FUSED_OPS_CALC_VEC;
 #else // FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS0;
+        FUSED_OPS_VEC;
 #endif // FUSED_OPS_CAN_USE_PRELOAD
 
-        OUTPUT_TYPE res = FUSED_OPS_RESULT0;
-        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + lid] = res;
+        MAKE_VECTOR_TYPE(OUTPUT_TYPE, 4) res = FUSED_OPS_RESULT_VEC;
+        // if (OUTPUT_TYPE_SIZE == 2) printf("SIZE2!");
+        // else if (OUTPUT_TYPE_SIZE == 4) printf("SIZE4!");
+        OUTPUT_BLOCK_WRITE4(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, res);
+        /*output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + lid] = res.s0;
+        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + SUB_GROUP_SIZE + lid] = res.s1;
+        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + 2 * SUB_GROUP_SIZE + lid] = res.s2;
+        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + 3 * SUB_GROUP_SIZE + lid] = res.s3;*/
         output_y++;
 #else // HAS_FUSED_OPS
-        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + lid] = dequantized;
+        OUTPUT_BLOCK_WRITE4(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, dequantized);
+        /*output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + lid] = dequantized.s0;
+        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + SUB_GROUP_SIZE + lid] = dequantized.s1;
+        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + 2 * SUB_GROUP_SIZE + lid] = dequantized.s2;
+        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + 3 * SUB_GROUP_SIZE + lid] = dequantized.s3;*/
 #endif // HAS_FUSED_OPS
     }
-
-    output_x += 8;
-
-#if HAS_FUSED_OPS && FUSED_OPS_CAN_USE_PRELOAD
-    FUSED_OPS_PRELOAD1;
-#endif // HAS_FUSED_OPS && FUSED_OPS_CAN_USE_PRELOAD
-    for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-        ACTIVATION_TYPE dequantized = TO_ACTIVATION_TYPE(tile_output01[i]);
-        dequantized *= TO_ACTIVATION_TYPE(ALPHA);
-#ifdef INPUT2_TYPE
-        dequantized += TO_ACTIVATION_TYPE(BETA) * tile_input21[i];
-#endif // INPUT2_TYPE
-
-#if HAS_FUSED_OPS
-#if FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS_CALC1;
-#else // FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS1;
-#endif // FUSED_OPS_CAN_USE_PRELOAD
-
-        OUTPUT_TYPE res = FUSED_OPS_RESULT1;
-        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + SUB_GROUP_SIZE + lid] = res;
-        output_y++;
-#else // HAS_FUSED_OPS
-        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + SUB_GROUP_SIZE + lid] = dequantized;
-#endif // HAS_FUSED_OPS
-    }
-    
-    output_x += 8;
-
-#if HAS_FUSED_OPS && FUSED_OPS_CAN_USE_PRELOAD
-    FUSED_OPS_PRELOAD2;
-#endif // HAS_FUSED_OPS && FUSED_OPS_CAN_USE_PRELOAD
-    for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-        ACTIVATION_TYPE dequantized = TO_ACTIVATION_TYPE(tile_output02[i]);
-        dequantized *= TO_ACTIVATION_TYPE(ALPHA);
-#ifdef INPUT2_TYPE
-        dequantized += TO_ACTIVATION_TYPE(BETA) * tile_input22[i];
-#endif // INPUT2_TYPE
-
-#if HAS_FUSED_OPS
-#if FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS_CALC2;
-#else // FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS2;
-#endif // FUSED_OPS_CAN_USE_PRELOAD
-
-        OUTPUT_TYPE res = FUSED_OPS_RESULT2;
-        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + 2 * SUB_GROUP_SIZE + lid] = res;
-        output_y++;
-#else // HAS_FUSED_OPS
-        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + 2 * SUB_GROUP_SIZE + lid] = dequantized;
-#endif // HAS_FUSED_OPS
-    }
-
-    output_x += 8;
-
-#if HAS_FUSED_OPS && FUSED_OPS_CAN_USE_PRELOAD
-    FUSED_OPS_PRELOAD3;
-#endif // HAS_FUSED_OPS && FUSED_OPS_CAN_USE_PRELOAD
-    for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-        ACTIVATION_TYPE dequantized = TO_ACTIVATION_TYPE(tile_output03[i]);
-        dequantized *= TO_ACTIVATION_TYPE(ALPHA);
-#ifdef INPUT2_TYPE
-        dequantized += TO_ACTIVATION_TYPE(BETA) * tile_input23[i];
-#endif // INPUT2_TYPE
-
-#if HAS_FUSED_OPS
-#if FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS_CALC3;
-#else // FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS3;
-#endif // FUSED_OPS_CAN_USE_PRELOAD
-
-        OUTPUT_TYPE res = FUSED_OPS_RESULT3;
-        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + 3 * SUB_GROUP_SIZE + lid] = res;
-        output_y++;
-#else // HAS_FUSED_OPS
-        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + 3 * SUB_GROUP_SIZE + lid] = dequantized;
-#endif // HAS_FUSED_OPS
-    }
-
-
-
-
 
 
 #if TILE_NUM == 2

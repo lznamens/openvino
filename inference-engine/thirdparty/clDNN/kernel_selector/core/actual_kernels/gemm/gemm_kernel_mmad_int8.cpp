@@ -67,11 +67,13 @@ JitConstants GemmKernelMMADint8::GetJitConstants(const gemm_params& params) cons
         FusedOpsConfiguration conf1 = { "1", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
         FusedOpsConfiguration conf2 = { "2", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
         FusedOpsConfiguration conf3 = { "3", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
+        FusedOpsConfiguration conf_vec = { "_VEC", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 4 };
         conf0.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
         conf1.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
         conf2.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
         conf3.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
-        jit.Merge(MakeFusedOpsJitConstants(params, { conf0, conf1, conf2, conf3 }));
+        conf_vec.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
+        jit.Merge(MakeFusedOpsJitConstants(params, { conf0, conf1, conf2, conf3, conf_vec }));
     }
 
     return jit;
@@ -183,7 +185,7 @@ KernelsData GemmKernelMMADint8::GetKernelsData(const Params& params, const optio
     GemmTuningData tuning_data = InitGemmTuningData(prim_params);
     auto mmad_operations_number = GetMmadOperationsNumber(tuning_data);
 
-    k_data.estimatedTime = mmad_operations_number < 4096 ? DONT_USE_IF_HAVE_SOMETHING_ELSE : FORCE_PRIORITY_3;
+    k_data.estimatedTime = mmad_operations_number < 4096 ? DONT_USE_IF_HAVE_SOMETHING_ELSE : FORCE_PRIORITY_1;
 
     return {k_data};
 }
