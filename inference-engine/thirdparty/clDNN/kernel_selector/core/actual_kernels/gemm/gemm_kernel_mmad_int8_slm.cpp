@@ -60,9 +60,9 @@ JitConstants GemmKernelMMADslmInt8::GetJitConstants(const gemm_params& params) c
 
     if (!params.fused_ops.empty()) {
         auto input_dt = GetActivationType(params);
-        FusedOpsConfiguration conf = { "", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
-        conf.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
-        jit.Merge(MakeFusedOpsJitConstants(params, { conf }));
+        FusedOpsConfiguration conf_vec = { "_VEC", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 4 };
+        conf_vec.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
+        jit.Merge(MakeFusedOpsJitConstants(params, { conf_vec }));
     }
 
     return jit;
@@ -146,7 +146,8 @@ KernelsData GemmKernelMMADslmInt8::GetKernelsData(const Params& params, const op
     GemmTuningData tuning_data = InitGemmTuningData(prim_params);
     auto mmad_operations_number = GetMmadOperationsNumber(tuning_data);
 
-    if ((mmad_operations_number >= 1024 * 1024 * 1024) || (tuning_data.size_m == 384 && tuning_data.size_k == 384 && tuning_data.size_n == 64))
+    if ((mmad_operations_number >= 1024 * 1024 * 1024) || (tuning_data.size_m == 384 && tuning_data.size_k == 384 && tuning_data.size_n == 64) ||
+        (tuning_data.size_m == 384 && tuning_data.size_k == 64 && tuning_data.size_n == 384))
         k_data.estimatedTime = FORCE_PRIORITY_2;
     else if (mmad_operations_number <= 65536 || tuning_data.size_k <= 64)
         k_data.estimatedTime = DONT_USE_IF_HAVE_SOMETHING_ELSE;

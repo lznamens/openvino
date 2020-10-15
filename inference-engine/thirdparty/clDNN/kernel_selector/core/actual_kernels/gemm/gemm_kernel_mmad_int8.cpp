@@ -67,7 +67,7 @@ JitConstants GemmKernelMMADint8::GetJitConstants(const gemm_params& params) cons
         FusedOpsConfiguration conf1 = { "1", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
         FusedOpsConfiguration conf2 = { "2", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
         FusedOpsConfiguration conf3 = { "3", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
-        FusedOpsConfiguration conf_vec = { "_VEC", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 4 };
+        FusedOpsConfiguration conf_vec = { "_VEC", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 8 };
         conf0.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
         conf1.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
         conf2.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
@@ -86,7 +86,7 @@ GemmKernelBase::DispatchData GemmKernelMMADint8::SetDefault(const gemm_params& p
     DispatchData kd;
     GemmTuningData td = SetTuningParams(params);
 
-    std::vector<size_t> global = { /*Align(output.X().v, td.simd_size)*/Align(output.X().v / 4, td.simd_size),
+    std::vector<size_t> global = { /*Align(output.X().v, td.simd_size)*/Align(output.X().v / 8, td.simd_size),
                                    Align(output.Y().v, td.simd_size * td.tile_num) / (td.simd_size * td.tile_num),
                                    total_batches };
 
@@ -185,7 +185,7 @@ KernelsData GemmKernelMMADint8::GetKernelsData(const Params& params, const optio
     GemmTuningData tuning_data = InitGemmTuningData(prim_params);
     auto mmad_operations_number = GetMmadOperationsNumber(tuning_data);
 
-    k_data.estimatedTime = mmad_operations_number < 4096 ? DONT_USE_IF_HAVE_SOMETHING_ELSE : FORCE_PRIORITY_1;
+    k_data.estimatedTime = mmad_operations_number < 4096 ? DONT_USE_IF_HAVE_SOMETHING_ELSE : FORCE_PRIORITY_9;
 
     return {k_data};
 }
@@ -193,7 +193,7 @@ KernelsData GemmKernelMMADint8::GetKernelsData(const Params& params, const optio
 bool GemmKernelMMADint8::Validate(const Params& params, const optional_params& options) const {
     if (!Parent::Validate(params, options))
         return false;
-
+    return false;
     const auto& gmm_params = static_cast<const gemm_params&>(params);
     auto input0_type = gmm_params.inputs[0].GetDType();
     auto input1_type = gmm_params.inputs[1].GetDType();
@@ -201,7 +201,7 @@ bool GemmKernelMMADint8::Validate(const Params& params, const optional_params& o
     // if (gmm_params.inputs.size() >= 3) return false;
     if (gmm_params.transpose_input1) return false;
     GemmTuningData tuning_data = InitGemmTuningData(gmm_params);
-    if (tuning_data.size_m % 8 || tuning_data.size_n % 32 || tuning_data.size_k % 32) return false;
+    if (tuning_data.size_m % 8 || tuning_data.size_n % 64 || tuning_data.size_k % 32) return false;
 
     if ((input0_type != Datatype::UINT8 && input0_type != Datatype::INT8) ||
         (input1_type != Datatype::UINT8 && input1_type != Datatype::INT8))

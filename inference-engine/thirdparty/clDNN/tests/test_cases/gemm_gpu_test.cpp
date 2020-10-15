@@ -3263,7 +3263,7 @@ struct gemm_base_test_params {
     std::string kernel_name;
 };
 
-#define CASE_GEMM_INT8_NN_TRANSPOSITION 8, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, false, false, \
+#define CASE_GEMM_INT8_NN_TRANSPOSITION 8, 64, 32, 1, 1, 1, 1, 1, 1, 1, 1, false, false, \
 1.5f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_NT_TRANSPOSITION 32, 64, 32, 2, 1, 2, 1, 2, 1, 2, 1, false, true, \
 1.7f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
@@ -3316,13 +3316,13 @@ struct gemm_base_test_params {
 1.2f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 
 #define CASE_GEMM_INT8_SLM_COMBO_1 64, 64, 64, 1, 2, 1, 1, 1, 1, 1, 2, false, false, \
-1.5f, 2.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.5f,1.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_SLM_COMBO_2 384, 384, 64, 2, 1, 1, 1, 1, 1, 2, 1, false, false, \
-1.7f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.7f, 1.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_SLM_COMBO_3 128, 128, 64, 2, 3, 2, 3, 2, 3, 2, 3, false, false, \
-1.0f, 1.5f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.0f, 1.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_SLM_COMBO_4 256, 64, 64, 3, 6, 3, 6, 3, 6, 3, 6, false, false, \
-1.2f, 4.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.2f, 1.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 
 #define CASE_GEMM_FP32_TILED_NN_1 32, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, false, false, \
 1.5f, 2.0f, data_types::f32, data_types::f32, data_types::f32, data_types::f32, {-10, 10, 8}, {-10, 10, 8}, {-10, 10, 8}

@@ -15,18 +15,43 @@
 #include "include/include_all.cl"
 #include "include/mmad.cl"
 
-#define AS_TYPE(type, val)      CAT(as_, type)(val)
-#define ACCUMULATOR_TYPE_VEC    CAT(ACCUMULATOR_TYPE, SUB_GROUP_SIZE)
-#define ACTIVATION_TYPE_VEC     CAT(ACTIVATION_TYPE, SUB_GROUP_SIZE)
-#define PACKED_INPUT0_TYPE_VEC  CAT(PACKED_INPUT0_TYPE, SUB_GROUP_SIZE)
-#define PACKED_INPUT1_TYPE_VEC  CAT(PACKED_INPUT1_TYPE, SUB_GROUP_SIZE)
-#define BLOCK_READ(ptr)         intel_sub_group_block_read((const __global uint*)(ptr))
+#define AS_TYPE(type, val)          CAT(as_, type)(val)
+#define ACCUMULATOR_TYPE_VEC        CAT(ACCUMULATOR_TYPE, SUB_GROUP_SIZE)
+#define ACTIVATION_TYPE_VEC         CAT(ACTIVATION_TYPE, 4)
+#define TO_ACTIVATION_TYPE_VEC(val) CAT(convert_, ACTIVATION_TYPE_VEC)(val)
+#define INPUT2_TYPE_VEC             CAT(INPUT2_TYPE, 4)
+#define AS_INPUT2_TYPE_VEC          CAT(as_, INPUT2_TYPE_VEC)
+#define PACKED_INPUT0_TYPE_VEC      CAT(PACKED_INPUT0_TYPE, SUB_GROUP_SIZE)
+#define PACKED_INPUT1_TYPE_VEC      CAT(PACKED_INPUT1_TYPE, SUB_GROUP_SIZE)
+#define BLOCK_READ(ptr)             intel_sub_group_block_read((const __global uint*)(ptr))
+
+#ifdef INPUT2_TYPE
+#if INPUT2_TYPE_SIZE == 1
+#   define BLOCK_READ_INPUT2(ptr)   AS_INPUT2_TYPE_VEC(BLOCK_READ_UC_4((__global uchar*)(ptr)))
+#elif INPUT2_TYPE_SIZE == 2
+#   define BLOCK_READ_INPUT2(ptr)   AS_INPUT2_TYPE_VEC(intel_sub_group_block_read_us4((__global ushort*)(ptr)))
+#elif INPUT2_TYPE_SIZE == 4        
+#   define BLOCK_READ_INPUT2(ptr)   AS_INPUT2_TYPE_VEC(intel_sub_group_block_read4((__global uint*)(ptr)))
+#else
+#   error gemm_mmad_int8_slm.cl : unsupported input2 type
+#endif // INPUT2_TYPE_SIZE == 1
+#endif // INPUT2_TYPE
+
+#if OUTPUT_TYPE_SIZE == 1
+#   define BLOCK_WRITE(ptr, offset, val)    BLOCK_WRITE_UC_4((__global uchar*)(ptr) + (offset), as_uchar4(val))
+#elif OUTPUT_TYPE_SIZE == 2
+#   define BLOCK_WRITE(ptr, offset, val)    intel_sub_group_block_write_us4((__global ushort*)(ptr) + (offset), as_ushort4(val))
+#elif OUTPUT_TYPE_SIZE == 4
+#   define BLOCK_WRITE(ptr, offset, val)    intel_sub_group_block_write4((__global uint*)(ptr) + (offset), as_uint4(val))
+#else
+#   error gemm_mmad_int8_slm.cl : unsupported output type
+#endif // OUTPUT_TYPE_SIZE == 1
 
 inline uint FUNC(get_input0_batch_offset)(uint b, uint f, uint w, uint z) {
 #if INPUT0_SIMPLE
     return GET_DATA_INDEX_6D_SAFE(INPUT0, b, f, w, z, 0, 0);
 #else // INPUT0_SIMPLE
-#   error gemm_mmad_int8_slm.cl : Unsupported input 0 format
+#   error gemm_mmad_int8_slm.cl : unsupported input 0 format
 #endif // INPUT0_SIMPLE
 }
 
@@ -34,7 +59,7 @@ inline uint FUNC(get_input1_batch_offset)(uint b, uint f, uint w, uint z) {
 #if INPUT1_SIMPLE
     return GET_DATA_INDEX_6D_SAFE(INPUT1, b, f, w, z, 0, 0);
 #else // INPUT1_SIMPLE
-#   error gemm_mmad_int8_slm.cl : Unsupported input 1 format
+#   error gemm_mmad_int8_slm.cl : unsupported input 1 format
 #endif // INPUT1_SIMPLE
 }
 
@@ -43,7 +68,7 @@ inline uint FUNC(get_input2_batch_offset)(uint b, uint f, uint w, uint z) {
 #if INPUT2_SIMPLE
     return GET_DATA_INDEX_6D_SAFE(INPUT2, b, f, w, z, 0, 0);
 #else // INPUT2_SIMPLE
-#   error gemm_mmad_int8_slm.cl : Unsupported input 2 format
+#   error gemm_mmad_int8_slm.cl : unsupported input 2 format
 #endif // INPUT2_SIMPLE
 }
 #endif // INPUT2_TYPE
@@ -52,7 +77,7 @@ inline uint FUNC(get_output_batch_offset)(uint b, uint f, uint w, uint z) {
 #if OUTPUT_SIMPLE
     return GET_DATA_INDEX_6D(OUTPUT, b, f, w, z, 0, 0);
 #else // OUTPUT_SIMPLE
-#   error gemm_mmad_int8_slm.cl : Unsupported output format
+#   error gemm_mmad_int8_slm.cl : unsupported output format
 #endif // OUTPUT_SIMPLE
 }
 
@@ -72,12 +97,8 @@ KERNEL(gemm_mmad_int8_slm)(
     )
 {
     // Indices
-    const uint output_x = (uint)get_global_id(0);
-    const uint output_x_tile = output_x * PACK_SIZE / SLM_TILE_SIZE;
+    const uint output_x_tile = (uint)get_global_id(0) * PACK_SIZE / SLM_TILE_SIZE;
     const uint output_y_tile = (uint)get_global_id(1);
-#if HAS_FUSED_OPS
-    uint output_y = output_y_tile * SUB_GROUP_SIZE;
-#endif // HAS_FUSED_OPS
 
     uint batch = get_global_id(2);
     const uint lid0 = (uint)get_local_id(0);
@@ -110,12 +131,9 @@ KERNEL(gemm_mmad_int8_slm)(
     // Pointer for loading the matrix B from SLM to registry chunks (GRF)
     __local INPUT1_TYPE* slm_tile_input1_pnt = (__local INPUT1_TYPE*)slm_tile_input1;
 
-    // Registry chunks of input matrices (A, B) + input2 (optional)
+    // Registry chunks of input matrices (A, B)
     PACKED_INPUT0_TYPE_VEC reg_tile_input0;
     PACKED_INPUT1_TYPE_VEC reg_tile_input1;
-#ifdef INPUT2_TYPE
-    ACTIVATION_TYPE_VEC tile_input2;
-#endif // INPUT2_TYPE
 
     // Registry chunks of the output matrix (C)
     ACCUMULATOR_TYPE_VEC reg_tile_output[4] = { (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
@@ -165,19 +183,19 @@ KERNEL(gemm_mmad_int8_slm)(
 #endif // PRELOADING_SLM
 
         // Loading the matrix B from SLM to GRF and calculating the matrix C
-        MAKE_VECTOR_TYPE(INPUT1_TYPE, PACK_SIZE) temp_input1[SUB_GROUP_SIZE];
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, PACK_SIZE) temp_input1;
 
         // Here is 4 iterations in the extern loop because we should calculate 4 chunks of the matrix C
         for (uint i = 0; i < 4; i++) {
             const uint common_offset = (k % SLM_DECIMATION_FACTOR) * SLM_TILE_SIZE * SLM_TILE_SIZE + i * SUB_GROUP_SIZE + lid0;
 
             for (uint j = 0; j < SUB_GROUP_SIZE; j++) {
-                temp_input1[j].s0 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE * (j * PACK_SIZE + 0)];
-                temp_input1[j].s1 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE * (j * PACK_SIZE + 1)];
-                temp_input1[j].s2 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE * (j * PACK_SIZE + 2)];
-                temp_input1[j].s3 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE * (j * PACK_SIZE + 3)];
+                temp_input1.s0 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE * (j * PACK_SIZE + 0)];
+                temp_input1.s1 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE * (j * PACK_SIZE + 1)];
+                temp_input1.s2 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE * (j * PACK_SIZE + 2)];
+                temp_input1.s3 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE * (j * PACK_SIZE + 3)];
 
-                reg_tile_input1[j] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1[j]);
+                reg_tile_input1[j] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1);
             }
 
         // Calculating one chunk of the matrix C
@@ -185,38 +203,39 @@ KERNEL(gemm_mmad_int8_slm)(
         }
     } // End of the loop by "k"
 
-#if HAS_FUSED_OPS && FUSED_OPS_CAN_USE_PRELOAD
-    FUSED_OPS_PRELOAD;
-#endif // HAS_FUSED_OPS && FUSED_OPS_CAN_USE_PRELOAD
+#if HAS_FUSED_OPS
+    uint output_x = output_x_tile * SLM_TILE_SIZE;
+    uint output_y = output_y_tile * SUB_GROUP_SIZE;
+#if FUSED_OPS_CAN_USE_PRELOAD
+    FUSED_OPS_PRELOAD_VEC;
+#endif // FUSED_OPS_CAN_USE_PRELOAD
+#endif // HAS_FUSED_OPS
 
     // Last calculations and writing result in the global memory
-    for (uint i = 0; i < 4; i++) {
-        for (uint j = 0; j < SUB_GROUP_SIZE; j++) {
-            ACTIVATION_TYPE dequantized = TO_ACTIVATION_TYPE(reg_tile_output_pnt[i * SUB_GROUP_SIZE + j]);
-            dequantized *= TO_ACTIVATION_TYPE(ALPHA);
-#ifdef INPUT2_TYPE
-            tile_input2[j] = TO_ACTIVATION_TYPE(input2[batch_offset_input2 + (output_y_tile * SUB_GROUP_SIZE + j) * OUTPUT_SIZE_X +
-                                                       output_x_tile * SLM_TILE_SIZE + i * SUB_GROUP_SIZE + lid0]);
-            dequantized += TO_ACTIVATION_TYPE(BETA) * tile_input2[j];
+    for (uint i = 0; i < SUB_GROUP_SIZE; i++) {       
+        MAKE_VECTOR_TYPE(ACCUMULATOR_TYPE, 4) reg_tile_output_temp;
+        for (uint j = 0; j < 4; j++) {
+            reg_tile_output_temp[j] = reg_tile_output_pnt[j * SUB_GROUP_SIZE + i];
+        }
+
+        ACTIVATION_TYPE_VEC dequantized = TO_ACTIVATION_TYPE(ALPHA) * TO_ACTIVATION_TYPE_VEC(reg_tile_output_temp);
+
+#ifdef INPUT2_TYPE     
+        dequantized += TO_ACTIVATION_TYPE(BETA) * TO_ACTIVATION_TYPE_VEC(BLOCK_READ_INPUT2(input2 + batch_offset_input2 + 
+                       (output_y_tile * SUB_GROUP_SIZE + i) * OUTPUT_SIZE_X + output_x_tile * SLM_TILE_SIZE));
 #endif // INPUT2_TYPE
 
 #if HAS_FUSED_OPS
 #if FUSED_OPS_CAN_USE_PRELOAD
-            FUSED_OPS_CALC;
+        FUSED_OPS_CALC_VEC;
 #else // FUSED_OPS_CAN_USE_PRELOAD
-            FUSED_OPS;
+        FUSED_OPS_VEC;
 #endif // FUSED_OPS_CAN_USE_PRELOAD
-            OUTPUT_TYPE res = FUSED_OPS_RESULT;
-            output[batch_offset_output + (output_y_tile * SUB_GROUP_SIZE + j) * OUTPUT_SIZE_X +
-                   output_x_tile * SLM_TILE_SIZE + i * SUB_GROUP_SIZE + lid0] = res;
-            output_y++;
+        MAKE_VECTOR_TYPE(OUTPUT_TYPE, 4) res = FUSED_OPS_RESULT_VEC;
+        BLOCK_WRITE(output, batch_offset_output + (output_y_tile * SUB_GROUP_SIZE + i) * OUTPUT_SIZE_X + output_x_tile * SLM_TILE_SIZE, res);
+        output_y++;
 #else // HAS_FUSED_OPS
-            output[batch_offset_output + (output_y_tile * SUB_GROUP_SIZE + j) * OUTPUT_SIZE_X +
-                   output_x_tile * SLM_TILE_SIZE + i * SUB_GROUP_SIZE + lid0] = dequantized;
-#endif // HAS_FUSED_OPS
-        }
-#if HAS_FUSED_OPS
-        output_y -= SUB_GROUP_SIZE;
+        BLOCK_WRITE(output, batch_offset_output + (output_y_tile * SUB_GROUP_SIZE + i) * OUTPUT_SIZE_X + output_x_tile * SLM_TILE_SIZE, dequantized);
 #endif // HAS_FUSED_OPS
     }
 }
@@ -224,6 +243,11 @@ KERNEL(gemm_mmad_int8_slm)(
 #undef AS_TYPE
 #undef ACCUMULATOR_TYPE_VEC
 #undef ACTIVATION_TYPE_VEC
+#undef TO_ACTIVATION_TYPE_VEC
+#undef INPUT2_TYPE_VEC
+#undef AS_INPUT2_TYPE_VEC
 #undef PACKED_INPUT0_TYPE_VEC
 #undef PACKED_INPUT1_TYPE_VEC
 #undef BLOCK_READ
+#undef BLOCK_READ_INPUT2
+#undef BLOCK_WRITE
