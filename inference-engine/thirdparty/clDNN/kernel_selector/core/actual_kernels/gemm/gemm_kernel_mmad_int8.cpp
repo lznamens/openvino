@@ -67,7 +67,7 @@ JitConstants GemmKernelMMADint8::GetJitConstants(const gemm_params& params) cons
         FusedOpsConfiguration conf1 = { "1", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
         FusedOpsConfiguration conf2 = { "2", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
         FusedOpsConfiguration conf3 = { "3", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
-        FusedOpsConfiguration conf_vec = { "_VEC", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 8 };
+        FusedOpsConfiguration conf_vec = { "_VEC", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 4 };
         conf0.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
         conf1.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
         conf2.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
@@ -86,7 +86,7 @@ GemmKernelBase::DispatchData GemmKernelMMADint8::SetDefault(const gemm_params& p
     DispatchData kd;
     GemmTuningData td = SetTuningParams(params);
 
-    std::vector<size_t> global = { /*Align(output.X().v, td.simd_size)*/Align(output.X().v / 8, td.simd_size),
+    std::vector<size_t> global = { Align(output.X().v / 4, td.simd_size),
                                    Align(output.Y().v, td.simd_size * td.tile_num) / (td.simd_size * td.tile_num),
                                    total_batches };
 
