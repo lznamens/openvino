@@ -70,7 +70,7 @@ KernelsData GemmKernelRef::GetKernelsData(const Params& params, const optional_p
 bool GemmKernelRef::Validate(const Params& params, const optional_params& options) const {
     if (!Parent::Validate(params, options))
         return false;
-
+    return false;
     // int8 validation
     const auto& gmm_params = static_cast<const gemm_params&>(params);
     auto input_type = gmm_params.inputs[0].GetDType();

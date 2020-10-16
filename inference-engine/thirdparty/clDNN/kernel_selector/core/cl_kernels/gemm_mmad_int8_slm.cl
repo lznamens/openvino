@@ -17,9 +17,9 @@
 
 #define AS_TYPE(type, val)          CAT(as_, type)(val)
 #define ACCUMULATOR_TYPE_VEC        CAT(ACCUMULATOR_TYPE, SUB_GROUP_SIZE)
-#define ACTIVATION_TYPE_VEC         CAT(ACTIVATION_TYPE, 4)
+#define ACTIVATION_TYPE_VEC         CAT(ACTIVATION_TYPE, OUTPUT_BLOCK_SIZE)
 #define TO_ACTIVATION_TYPE_VEC(val) CAT(convert_, ACTIVATION_TYPE_VEC)(val)
-#define INPUT2_TYPE_VEC             CAT(INPUT2_TYPE, 4)
+#define INPUT2_TYPE_VEC             CAT(INPUT2_TYPE, OUTPUT_BLOCK_SIZE)
 #define AS_INPUT2_TYPE_VEC          CAT(as_, INPUT2_TYPE_VEC)
 #define PACKED_INPUT0_TYPE_VEC      CAT(PACKED_INPUT0_TYPE, SUB_GROUP_SIZE)
 #define PACKED_INPUT1_TYPE_VEC      CAT(PACKED_INPUT1_TYPE, SUB_GROUP_SIZE)
@@ -97,7 +97,7 @@ KERNEL(gemm_mmad_int8_slm)(
     )
 {
     // Indices
-    const uint output_x_tile = (uint)get_global_id(0) * PACK_SIZE / SLM_TILE_SIZE;
+    const uint output_x_tile = (uint)get_global_id(0) * OUTPUT_BLOCK_SIZE / SLM_TILE_SIZE_N;
     const uint output_y_tile = (uint)get_global_id(1);
 
     uint batch = get_global_id(2);
@@ -126,7 +126,7 @@ KERNEL(gemm_mmad_int8_slm)(
     __global PACKED_INPUT1_TYPE_VEC* input1_pnt = (__global PACKED_INPUT1_TYPE_VEC*)input1;
 
     // SLM tile of the matrix B
-    __local PACKED_INPUT1_TYPE_VEC slm_tile_input1[SLM_TILE_SIZE * SLM_DECIMATION_FACTOR];
+    __local PACKED_INPUT1_TYPE_VEC slm_tile_input1[SLM_TILE_SIZE_K * SLM_DECIMATION_FACTOR];
 
     // Pointer for loading the matrix B from SLM to registry chunks (GRF)
     __local INPUT1_TYPE* slm_tile_input1_pnt = (__local INPUT1_TYPE*)slm_tile_input1;
@@ -136,22 +136,22 @@ KERNEL(gemm_mmad_int8_slm)(
     PACKED_INPUT1_TYPE_VEC reg_tile_input1;
 
     // Registry chunks of the output matrix (C)
-    ACCUMULATOR_TYPE_VEC reg_tile_output[4] = { (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
-                                                (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
-                                                (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
-                                                (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO) };
+    ACCUMULATOR_TYPE_VEC reg_tile_output[OUTPUT_BLOCK_SIZE] = { (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
+                                                                (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
+                                                                (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
+                                                                (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO) };
 
     // Pointer to the result array (the matrix C)
     ACCUMULATOR_TYPE* reg_tile_output_pnt = (ACCUMULATOR_TYPE*)reg_tile_output;
 
     // Calculating positions for loading input matrices from the global memory
     const uint wg_offset_y = lid1 * SUB_GROUP_SIZE + lid0;
-    const uint input1_index = (batch_offset_input1 + wg_offset_y * INPUT1_SIZE_X) / SLM_TILE_SIZE + gid0;
-    const uint common_input0_offset = batch_offset_input0 + (gid1 * SLM_TILE_SIZE + lid1 * SUB_GROUP_SIZE) * INPUT0_SIZE_X;
+    const uint input1_index = (batch_offset_input1 + wg_offset_y * INPUT1_SIZE_X) / SLM_TILE_SIZE_N + gid0;
+    const uint common_input0_offset = batch_offset_input0 + (gid1 * SUB_GROUP_SIZE * PACK_SIZE + lid1 * SUB_GROUP_SIZE) * INPUT0_SIZE_X;
 
 #ifdef PRELOADING_SLM
     for (uint i = 0; i < SLM_DECIMATION_FACTOR; i++) {
-        slm_tile_input1[i * SLM_TILE_SIZE + wg_offset_y] = input1_pnt[input1_index + i * INPUT1_SIZE_X];
+        slm_tile_input1[i * SLM_TILE_SIZE_K + wg_offset_y] = input1_pnt[input1_index + i * INPUT1_SIZE_X];
     }
 
     // Synchronization; waiting until all work items will finish loading the matrix B from the global memory to SLM
@@ -159,11 +159,11 @@ KERNEL(gemm_mmad_int8_slm)(
 #endif // PRELOADING_SLM
 
     // Loop by "k" tiles
-    for (uint k = 0; k < INPUT0_SIZE_X / SLM_TILE_SIZE; k++) {
+    for (uint k = 0; k < INPUT0_SIZE_X / SLM_TILE_SIZE_K; k++) {
 
         // Loading the matrix A from the global memory to GRF
         for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-            reg_tile_input0[i] = AS_TYPE(PACKED_INPUT0_TYPE, BLOCK_READ(input0 + common_input0_offset + k * SLM_TILE_SIZE + i * INPUT0_SIZE_X));
+            reg_tile_input0[i] = AS_TYPE(PACKED_INPUT0_TYPE, BLOCK_READ(input0 + common_input0_offset + k * SLM_TILE_SIZE_K + i * INPUT0_SIZE_X));
         }
 
 #ifndef PRELOADING_SLM
@@ -174,7 +174,7 @@ KERNEL(gemm_mmad_int8_slm)(
             barrier(CLK_LOCAL_MEM_FENCE);
 
             for (uint i = 0; i < SLM_DECIMATION_FACTOR; i++) {
-                slm_tile_input1[i * SLM_TILE_SIZE + wg_offset_y] = input1_pnt[input1_index + (k + i) * INPUT1_SIZE_X];
+                slm_tile_input1[i * SLM_TILE_SIZE_K + wg_offset_y] = input1_pnt[input1_index + (k + i) * INPUT1_SIZE_X];
             }
 
             // Synchronization; waiting until all work items will finish loading the matrix B from the global memory to SLM
@@ -185,15 +185,15 @@ KERNEL(gemm_mmad_int8_slm)(
         // Loading the matrix B from SLM to GRF and calculating the matrix C
         MAKE_VECTOR_TYPE(INPUT1_TYPE, PACK_SIZE) temp_input1;
 
-        // Here is 4 iterations in the extern loop because we should calculate 4 chunks of the matrix C
-        for (uint i = 0; i < 4; i++) {
-            const uint common_offset = (k % SLM_DECIMATION_FACTOR) * SLM_TILE_SIZE * SLM_TILE_SIZE + i * SUB_GROUP_SIZE + lid0;
+        // Here is OUTPUT_BLOCK_SIZE iterations in the extern loop because we should calculate OUTPUT_BLOCK_SIZE chunks of the matrix C
+        for (uint i = 0; i < OUTPUT_BLOCK_SIZE; i++) {
+            const uint common_offset = (k % SLM_DECIMATION_FACTOR) * SLM_TILE_SIZE_K * SLM_TILE_SIZE_N + i * SUB_GROUP_SIZE + lid0;
 
             for (uint j = 0; j < SUB_GROUP_SIZE; j++) {
-                temp_input1.s0 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE * (j * PACK_SIZE + 0)];
-                temp_input1.s1 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE * (j * PACK_SIZE + 1)];
-                temp_input1.s2 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE * (j * PACK_SIZE + 2)];
-                temp_input1.s3 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE * (j * PACK_SIZE + 3)];
+                temp_input1.s0 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE_N * (j * PACK_SIZE + 0)];
+                temp_input1.s1 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE_N * (j * PACK_SIZE + 1)];
+                temp_input1.s2 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE_N * (j * PACK_SIZE + 2)];
+                temp_input1.s3 = slm_tile_input1_pnt[common_offset + SLM_TILE_SIZE_N * (j * PACK_SIZE + 3)];
 
                 reg_tile_input1[j] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1);
             }
@@ -204,7 +204,7 @@ KERNEL(gemm_mmad_int8_slm)(
     } // End of the loop by "k"
 
 #if HAS_FUSED_OPS
-    uint output_x = output_x_tile * SLM_TILE_SIZE;
+    uint output_x = output_x_tile * SLM_TILE_SIZE_N;
     uint output_y = output_y_tile * SUB_GROUP_SIZE;
 #if FUSED_OPS_CAN_USE_PRELOAD
     FUSED_OPS_PRELOAD_VEC;
@@ -212,17 +212,17 @@ KERNEL(gemm_mmad_int8_slm)(
 #endif // HAS_FUSED_OPS
 
     // Last calculations and writing result in the global memory
-    for (uint i = 0; i < SUB_GROUP_SIZE; i++) {       
+    for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
         MAKE_VECTOR_TYPE(ACCUMULATOR_TYPE, 4) reg_tile_output_temp;
-        for (uint j = 0; j < 4; j++) {
+        for (uint j = 0; j < OUTPUT_BLOCK_SIZE; j++) {
             reg_tile_output_temp[j] = reg_tile_output_pnt[j * SUB_GROUP_SIZE + i];
         }
 
         ACTIVATION_TYPE_VEC dequantized = TO_ACTIVATION_TYPE(ALPHA) * TO_ACTIVATION_TYPE_VEC(reg_tile_output_temp);
 
-#ifdef INPUT2_TYPE     
-        dequantized += TO_ACTIVATION_TYPE(BETA) * TO_ACTIVATION_TYPE_VEC(BLOCK_READ_INPUT2(input2 + batch_offset_input2 + 
-                       (output_y_tile * SUB_GROUP_SIZE + i) * OUTPUT_SIZE_X + output_x_tile * SLM_TILE_SIZE));
+#ifdef INPUT2_TYPE
+        dequantized += TO_ACTIVATION_TYPE(BETA) * TO_ACTIVATION_TYPE_VEC(BLOCK_READ_INPUT2(input2 + batch_offset_input2 +
+                       (output_y_tile * SUB_GROUP_SIZE + i) * OUTPUT_SIZE_X + output_x_tile * SLM_TILE_SIZE_N));
 #endif // INPUT2_TYPE
 
 #if HAS_FUSED_OPS
@@ -231,11 +231,11 @@ KERNEL(gemm_mmad_int8_slm)(
 #else // FUSED_OPS_CAN_USE_PRELOAD
         FUSED_OPS_VEC;
 #endif // FUSED_OPS_CAN_USE_PRELOAD
-        MAKE_VECTOR_TYPE(OUTPUT_TYPE, 4) res = FUSED_OPS_RESULT_VEC;
-        BLOCK_WRITE(output, batch_offset_output + (output_y_tile * SUB_GROUP_SIZE + i) * OUTPUT_SIZE_X + output_x_tile * SLM_TILE_SIZE, res);
+        MAKE_VECTOR_TYPE(OUTPUT_TYPE, OUTPUT_BLOCK_SIZE) res = FUSED_OPS_RESULT_VEC;
+        BLOCK_WRITE(output, batch_offset_output + (output_y_tile * SUB_GROUP_SIZE + i) * OUTPUT_SIZE_X + output_x_tile * SLM_TILE_SIZE_N, res);
         output_y++;
 #else // HAS_FUSED_OPS
-        BLOCK_WRITE(output, batch_offset_output + (output_y_tile * SUB_GROUP_SIZE + i) * OUTPUT_SIZE_X + output_x_tile * SLM_TILE_SIZE, dequantized);
+        BLOCK_WRITE(output, batch_offset_output + (output_y_tile * SUB_GROUP_SIZE + i) * OUTPUT_SIZE_X + output_x_tile * SLM_TILE_SIZE_N, dequantized);
 #endif // HAS_FUSED_OPS
     }
 }

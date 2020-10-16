@@ -54,13 +54,15 @@ JitConstants GemmKernelMMADslmInt8::GetJitConstants(const gemm_params& params) c
     jit.Merge(MakeTypeJitConstants(Datatype::F32, "ACTIVATION"));
     jit.Merge(MakeTypeJitConstants(params.inputs[0].GetDType() == Datatype::INT8 ? Datatype::INT32 : Datatype::UINT32, "PACKED_INPUT0"));
     jit.Merge(MakeTypeJitConstants(params.inputs[1].GetDType() == Datatype::INT8 ? Datatype::INT32 : Datatype::UINT32, "PACKED_INPUT1"));
-    jit.AddConstant(MakeJitConstant("SLM_TILE_SIZE", td.slm_tile_size));
+    jit.AddConstant(MakeJitConstant("SLM_TILE_SIZE_N", td.slm_tile_size_n));
+    jit.AddConstant(MakeJitConstant("SLM_TILE_SIZE_K", td.slm_tile_size_k));
+    jit.AddConstant(MakeJitConstant("OUTPUT_BLOCK_SIZE", td.output_block_size));
     jit.AddConstant(MakeJitConstant("SLM_DECIMATION_FACTOR", td.slm_decimation_factor));
     if (td.size_k <= td.max_slm_preloading_size) jit.AddConstant(MakeJitConstant("PRELOADING_SLM", 1));
 
     if (!params.fused_ops.empty()) {
         auto input_dt = GetActivationType(params);
-        FusedOpsConfiguration conf_vec = { "_VEC", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 4 };
+        FusedOpsConfiguration conf_vec = { "_VEC", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, td.output_block_size };
         conf_vec.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
         jit.Merge(MakeFusedOpsJitConstants(params, { conf_vec }));
     }
@@ -75,8 +77,8 @@ GemmKernelBase::DispatchData GemmKernelMMADslmInt8::SetDefault(const gemm_params
     DispatchData kd;
     GemmTuningData td = SetTuningParams(params);
 
-    std::vector<size_t> global = { td.size_n / td.pack_size, output.Y().v / td.simd_size, total_batches };
-    std::vector<size_t> local = { td.slm_tile_size / td.pack_size, td.slm_tile_size / td.simd_size, 1 };
+    std::vector<size_t> global = { td.size_n / td.output_block_size, output.Y().v / td.simd_size, total_batches };
+    std::vector<size_t> local = { td.slm_tile_size_n / td.output_block_size, td.slm_tile_size_k / td.simd_size, 1 };
 
     kd.gws0 = global[0];
     kd.gws1 = global[1];
@@ -104,15 +106,15 @@ inline size_t GemmKernelMMADslmInt8::GetMmadOperationsNumber(const GemmTuningDat
 }
 
 inline bool GemmKernelMMADslmInt8::HasLeftovers(const GemmTuningData& tuning_data) const {
-    return tuning_data.size_m % tuning_data.slm_tile_size || tuning_data.size_n % tuning_data.slm_tile_size ||
-           tuning_data.size_k % (tuning_data.slm_tile_size * tuning_data.slm_decimation_factor);
+    return tuning_data.size_m % tuning_data.simd_size || tuning_data.size_n % tuning_data.slm_tile_size_n ||
+           tuning_data.size_k % (tuning_data.slm_tile_size_k * tuning_data.slm_decimation_factor);
 }
 
 GemmKernelMMADslmInt8::GemmTuningData GemmKernelMMADslmInt8::SetTuningParams(const gemm_params& params) const {
     GemmTuningData tuning_data = InitGemmTuningData(params);
 
     tuning_data.slm_decimation_factor = tuning_data.size_k <= tuning_data.max_slm_preloading_size ?
-                                        tuning_data.size_k / tuning_data.slm_tile_size : 2;
+                                        tuning_data.size_k / tuning_data.slm_tile_size_k : 2;
     return tuning_data;
 }
 
