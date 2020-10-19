@@ -128,14 +128,14 @@ KERNEL(gemm_mmad_int8_slm)(
     // SLM tile of the matrix B
     __local PACKED_INPUT1_TYPE_VEC slm_tile_input1[SLM_TILE_SIZE_K * SLM_DECIMATION_FACTOR];
 
-    // Pointer for loading the matrix B from SLM to registry chunks (GRF)
+    // Pointer for loading the matrix B from SLM to register chunks (GRF)
     __local INPUT1_TYPE* slm_tile_input1_pnt = (__local INPUT1_TYPE*)slm_tile_input1;
 
-    // Registry chunks of input matrices (A, B)
+    // Register chunks of input matrices (A, B)
     PACKED_INPUT0_TYPE_VEC reg_tile_input0;
     PACKED_INPUT1_TYPE_VEC reg_tile_input1;
 
-    // Registry chunks of the output matrix (C)
+    // Register chunks of the output matrix (C)
     ACCUMULATOR_TYPE_VEC reg_tile_output[OUTPUT_BLOCK_SIZE] = { (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
                                                                 (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
                                                                 (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
