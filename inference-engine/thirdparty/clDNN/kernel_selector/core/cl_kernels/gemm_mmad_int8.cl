@@ -16,6 +16,7 @@
 #include "include/mmad.cl"
 
 #define PACK_SIZE                   4
+#define OUTPUT_BLOCK_SIZE           4
 
 #define AS_TYPE(type, val)          CAT(as_, type)(val)
 #define ACCUMULATOR_TYPE_VEC        CAT(ACCUMULATOR_TYPE, SUB_GROUP_SIZE)
@@ -348,13 +349,13 @@ KERNEL(gemm_mmad_int8)(
     const uint batch_offset_output = FUNC_CALL(get_output_batch_offset)(b, f, w, z);
 
     // Registry chunks of the output matrix (C)
-    ACCUMULATOR_TYPE_VEC reg_tile_output[OUTPUT_BLOCK_SIZE] = { (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
-                                                                (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
-                                                                (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
-                                                                (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO) };
+    ACCUMULATOR_TYPE_VEC tile_output[OUTPUT_BLOCK_SIZE] = { (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
+                                                            (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
+                                                            (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
+                                                            (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO) };
 
     // Pointer to the result array (the matrix C)
-    ACCUMULATOR_TYPE* reg_tile_output_pnt = (ACCUMULATOR_TYPE*)reg_tile_output;
+    ACCUMULATOR_TYPE* tile_output_pnt = (ACCUMULATOR_TYPE*)tile_output;
 
 #if !TRANSPOSE_INPUT0
     const uint K_BLOCK_NUM = INPUT0_SIZE_X / TILE_SIZE_K;
@@ -370,51 +371,24 @@ KERNEL(gemm_mmad_int8)(
 #if !TRANSPOSE_INPUT1
         INPUT1_TYPE_VEC temp_input1[PACK_SIZE];
         INPUT1_TYPE* temp_input1_pnt = (INPUT1_TYPE*)temp_input1;
-        // MAKE_VECTOR_TYPE(INPUT1_TYPE, PACK_SIZE) temp_input1;
+
         const uint common_input1_offset = batch_offset_input1 + k * TILE_SIZE_K * INPUT1_SIZE_X + output_x_tile * TILE_SIZE_N;
 
         for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
             for (uint j = 0; j < PACK_SIZE; j++) {
                 temp_input1[j] = AS_TYPE(INPUT1_TYPE_VEC, BLOCK_READ_CHAR(input1 + common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + j * INPUT1_SIZE_X));
             }
-            
+
             for (uint j = 0; j < OUTPUT_BLOCK_SIZE; j++) {
-                tile_input1_pnt[j * SUB_GROUP_SIZE + i] = AS_TYPE(PACKED_INPUT1_TYPE, INPUT1_TYPE_VEC(temp_input1_pnt[]));
+                INPUT1_TYPE_VEC temp_input1_pack;
+                temp_input1_pack.s0 = temp_input1_pnt[j];
+                temp_input1_pack.s1 = temp_input1_pnt[j + OUTPUT_BLOCK_SIZE];
+                temp_input1_pack.s2 = temp_input1_pnt[j + 2 * OUTPUT_BLOCK_SIZE];
+                temp_input1_pack.s3 = temp_input1_pnt[j + 3 * OUTPUT_BLOCK_SIZE];
+
+                tile_input1_pnt[i + j * SUB_GROUP_SIZE] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1_pack);
             }    
-            /*temp_input1.s0 = temp_input10.s0;
-            temp_input1.s1 = temp_input11.s0;
-            temp_input1.s2 = temp_input12.s0;
-            temp_input1.s3 = temp_input13.s0;
-            tile_input10[i] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1);
-
-            temp_input1.s0 = temp_input10.s1;
-            temp_input1.s1 = temp_input11.s1;
-            temp_input1.s2 = temp_input12.s1;
-            temp_input1.s3 = temp_input13.s1;
-            tile_input11[i] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1);
-
-            temp_input1.s0 = temp_input10.s2;
-            temp_input1.s1 = temp_input11.s2;
-            temp_input1.s2 = temp_input12.s2;
-            temp_input1.s3 = temp_input13.s2;
-            tile_input12[i] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1);
-
-            temp_input1.s0 = temp_input10.s3;
-            temp_input1.s1 = temp_input11.s3;
-            temp_input1.s2 = temp_input12.s3;
-            temp_input1.s3 = temp_input13.s3;
-            tile_input13[i] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1);*/
-            // printf("")
-            // printf("tile_input1 = %#v4hhx\n", temp_input);
         }
-        /*for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-            temp_input1[i].s0 = input1[common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + lid];
-            temp_input1[i].s1 = input1[common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + INPUT1_SIZE_X + lid];
-            temp_input1[i].s2 = input1[common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + 2 * INPUT1_SIZE_X + lid];
-            temp_input1[i].s3 = input1[common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + 3 * INPUT1_SIZE_X + lid];
-
-            tile_input10[i] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1[i]);
-        }*/
 #else // !TRANSPOSE_INPUT1
         const uint common_input1_offset = batch_offset_input1 + output_x_tile * TILE_SIZE_N * INPUT1_SIZE_X + k * TILE_SIZE_K;
 
@@ -469,60 +443,13 @@ KERNEL(gemm_mmad_int8)(
             tile_input0[i] = AS_TYPE(PACKED_INPUT0_TYPE, BLOCK_READ_INT(input0 + common_input0_offset + i * INPUT0_SIZE_X));
         }
 
-/*#if !TRANSPOSE_INPUT1
-        MAKE_VECTOR_TYPE(INPUT1_TYPE, PACK_SIZE) temp_input10, temp_input11, temp_input12, temp_input13, temp_input1;
-        const uint common_input1_offset = batch_offset_input1 + k * TILE_SIZE_K * INPUT1_SIZE_X + output_x_tile * TILE_SIZE_N;
-
-        
-
-    PACKED_INPUT1_TYPE_VEC tile_input10;
-    PACKED_INPUT1_TYPE_VEC tile_input11;
-    PACKED_INPUT1_TYPE_VEC tile_input12;
-    PACKED_INPUT1_TYPE_VEC tile_input13;
-        for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-            temp_input10 = AS_TYPE(INPUT1_TYPE_VEC, BLOCK_READ_CHAR4(input1 + common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X));
-            temp_input11 = AS_TYPE(INPUT1_TYPE_VEC, BLOCK_READ_CHAR4(input1 + common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + INPUT1_SIZE_X));
-            temp_input12 = AS_TYPE(INPUT1_TYPE_VEC, BLOCK_READ_CHAR4(input1 + common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + 2 * INPUT1_SIZE_X));
-            temp_input13 = AS_TYPE(INPUT1_TYPE_VEC, BLOCK_READ_CHAR4(input1 + common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + 3 * INPUT1_SIZE_X));
-
-            temp_input1.s0 = temp_input10.s0;
-            temp_input1.s1 = temp_input11.s0;
-            temp_input1.s2 = temp_input12.s0;
-            temp_input1.s3 = temp_input13.s0;
-            tile_input10[i] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1);
-
-            temp_input1.s0 = temp_input10.s1;
-            temp_input1.s1 = temp_input11.s1;
-            temp_input1.s2 = temp_input12.s1;
-            temp_input1.s3 = temp_input13.s1;
-            tile_input11[i] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1);
-
-            temp_input1.s0 = temp_input10.s2;
-            temp_input1.s1 = temp_input11.s2;
-            temp_input1.s2 = temp_input12.s2;
-            temp_input1.s3 = temp_input13.s2;
-            tile_input12[i] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1);
-
-            temp_input1.s0 = temp_input10.s3;
-            temp_input1.s1 = temp_input11.s3;
-            temp_input1.s2 = temp_input12.s3;
-            temp_input1.s3 = temp_input13.s3;
-            tile_input13[i] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1);
-        }
-#endif */       
-
-        /*tile_output = MMAD(tile_input0, tile_input10, tile_output00);
-        tile_output = MMAD(tile_input0, tile_input11, tile_output01);
-        tile_output = MMAD(tile_input0, tile_input12, tile_output02);
-        tile_output = MMAD(tile_input0, tile_input13, tile_output03);*/
-
         // We should calculate OUTPUT_BLOCK_SIZE chunks of the matrix C
         for (uint i = 0; i < OUTPUT_BLOCK_SIZE; i++) {
             tile_output[i] = MMAD_8x8(tile_input0, tile_input1[i], tile_output[i]);
         }
 
 #else // !TRANSPOSE_INPUT0
-        /*MAKE_VECTOR_TYPE(INPUT0_TYPE, PACK_SIZE) temp_input0[SUB_GROUP_SIZE];
+        MAKE_VECTOR_TYPE(INPUT0_TYPE, PACK_SIZE) temp_input0[SUB_GROUP_SIZE];
         const uint common_input0_offset = batch_offset_input0 + (k * TILE_SIZE_K + lid * PACK_SIZE) * INPUT0_SIZE_X + output_y_tile * TILE_SIZE_M;
 
         for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
@@ -534,7 +461,7 @@ KERNEL(gemm_mmad_int8)(
             tile_input00[i] = AS_TYPE(PACKED_INPUT0_TYPE, temp_input0[i]);
         }
 
-        tile_output00 = MMAD(tile_input00, tile_input10, tile_output00);*/
+        tile_output00 = MMAD(tile_input00, tile_input10, tile_output00);
 
 #endif // !TRANSPOSE_INPUT0
     }
@@ -544,7 +471,7 @@ KERNEL(gemm_mmad_int8)(
     uint output_y = output_y_tile * TILE_SIZE_M;
 #if FUSED_OPS_CAN_USE_PRELOAD
     FUSED_OPS_PRELOAD_VEC;
-#endif // FUSED_OPS_CAN_USE_PRELOAD    
+#endif // FUSED_OPS_CAN_USE_PRELOAD
 #endif // HAS_FUSED_OPS
 
     for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
@@ -557,7 +484,7 @@ KERNEL(gemm_mmad_int8)(
 
 #ifdef INPUT2_TYPE
         dequantized += TO_ACTIVATION_TYPE(BETA) * TO_ACTIVATION_TYPE_VEC(BLOCK_READ_INPUT2(input2 + batch_offset_input2 + 
-                       (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N;
+                       (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N));
 #endif // INPUT2_TYPE
 
 #if HAS_FUSED_OPS

@@ -193,7 +193,7 @@ KernelsData GemmKernelMMADint8::GetKernelsData(const Params& params, const optio
 bool GemmKernelMMADint8::Validate(const Params& params, const optional_params& options) const {
     if (!Parent::Validate(params, options))
         return false;
-    return false;
+
     const auto& gmm_params = static_cast<const gemm_params&>(params);
     auto input0_type = gmm_params.inputs[0].GetDType();
     auto input1_type = gmm_params.inputs[1].GetDType();
@@ -201,7 +201,7 @@ bool GemmKernelMMADint8::Validate(const Params& params, const optional_params& o
     // if (gmm_params.inputs.size() >= 3) return false;
     if (gmm_params.transpose_input1) return false;
     GemmTuningData tuning_data = InitGemmTuningData(gmm_params);
-    if (tuning_data.size_m % 8 || tuning_data.size_n % 64 || tuning_data.size_k % 32) return false;
+    if (tuning_data.size_m % 8 || tuning_data.size_n % 32 || tuning_data.size_k % 32) return false;
 
     if ((input0_type != Datatype::UINT8 && input0_type != Datatype::INT8) ||
         (input1_type != Datatype::UINT8 && input1_type != Datatype::INT8))
