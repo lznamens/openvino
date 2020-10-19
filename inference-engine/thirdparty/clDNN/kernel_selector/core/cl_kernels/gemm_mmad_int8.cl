@@ -472,7 +472,7 @@ KERNEL(gemm_mmad_int8)(
     uint output_x = output_x_tile * TILE_SIZE_N;
     uint output_y = output_y_tile * TILE_SIZE_M;
 #if FUSED_OPS_CAN_USE_PRELOAD
-    FUSED_OPS_PRELOAD_VEC;
+    FUSED_OPS_PRELOAD;
 #endif // FUSED_OPS_CAN_USE_PRELOAD
 #endif // HAS_FUSED_OPS
 
@@ -491,11 +491,11 @@ KERNEL(gemm_mmad_int8)(
 
 #if HAS_FUSED_OPS
 #if FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS_CALC_VEC;
+        FUSED_OPS_CALC;
 #else // FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS_VEC;
+        FUSED_OPS;
 #endif // FUSED_OPS_CAN_USE_PRELOAD
-        MAKE_VECTOR_TYPE(OUTPUT_TYPE, OUTPUT_BLOCK_SIZE) res = FUSED_OPS_RESULT_VEC;
+        MAKE_VECTOR_TYPE(OUTPUT_TYPE, OUTPUT_BLOCK_SIZE) res = FUSED_OPS_RESULT;
         BLOCK_WRITE(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, res);
         output_y++;
 #else // HAS_FUSED_OPS
