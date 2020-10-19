@@ -378,7 +378,7 @@ KERNEL(gemm_mmad_int8)(
     for (uint k = 0; k < K_BLOCK_NUM; k++) {
         PACKED_INPUT0_TYPE_VEC tile_input0;
 
-#if !TRANSPOSE_INPUT1
+#if !TRANSPOSE_INPUT1 && !TRANSPOSE_INPUT0
         PACKED_INPUT1_TYPE_VEC tile_input1[OUTPUT_BLOCK_SIZE];
         PACKED_INPUT1_TYPE* tile_input1_pnt = (PACKED_INPUT1_TYPE*)tile_input1;
         INPUT1_TYPE_VEC temp_input1[PACK_SIZE];
@@ -403,13 +403,29 @@ KERNEL(gemm_mmad_int8)(
                 tile_input1_pnt[i + j * SUB_GROUP_SIZE] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1_pack);
             }    
         }
-#else // !TRANSPOSE_INPUT1
+#elif !TRANSPOSE_INPUT1
+        PACKED_INPUT1_TYPE_VEC tile_input1;
+        MAKE_VECTOR_TYPE(INPUT1_TYPE, PACK_SIZE) temp_input1[SUB_GROUP_SIZE];
+
+        const uint common_input1_offset = batch_offset_input1 + k * TILE_SIZE_K * INPUT1_SIZE_X + output_x_tile * TILE_SIZE_N;
+
+        // Loading the matrix B from the global memory to GRF
+        for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
+            temp_input1[i].s0 = input1[common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + lid];
+            temp_input1[i].s1 = input1[common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + INPUT1_SIZE_X + lid];
+            temp_input1[i].s2 = input1[common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + 2 * INPUT1_SIZE_X + lid];
+            temp_input1[i].s3 = input1[common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + 3 * INPUT1_SIZE_X + lid];
+
+            tile_input1[i] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1[i]);
+        }
+#else // !TRANSPOSE_INPUT1 && !TRANSPOSE_INPUT0
         PACKED_INPUT1_TYPE_VEC tile_input1;
 
         const uint common_input1_offset = batch_offset_input1 + output_x_tile * TILE_SIZE_N * INPUT1_SIZE_X + k * TILE_SIZE_K;
 
+        // Loading the matrix B from the global memory to GRF
         for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-            tile_input1[i] = AS_TYPE(PACKED_INPUT1_TYPE, BLOCK_READ(input1 + common_input1_offset  + i * INPUT1_SIZE_X));
+            tile_input1[i] = AS_TYPE(PACKED_INPUT1_TYPE, BLOCK_READ_INT(input1 + common_input1_offset  + i * INPUT1_SIZE_X));
         }
 
         PACKED_INPUT1_TYPE_VEC tile_input1_col0 = BLOCK_SHUFFLE(tile_input1, 0);
@@ -450,7 +466,7 @@ KERNEL(gemm_mmad_int8)(
         tile_input1.sf = tile_input1_col15[lid];
 #endif // SUB_GROUP_SIZE == 16
 
-#endif // !TRANSPOSE_INPUT1
+#endif // !TRANSPOSE_INPUT1 && !TRANSPOSE_INPUT0
 
 #if !TRANSPOSE_INPUT0
         const uint common_input0_offset = batch_offset_input0 + output_y_tile * TILE_SIZE_M * INPUT0_SIZE_X + k * TILE_SIZE_K;
