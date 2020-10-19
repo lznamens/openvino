@@ -27,6 +27,7 @@ public:
         size_t size_n;
         size_t size_k;
 
+        const size_t output_block_size = 4;
         size_t simd_size = 16;
         size_t tile_num = 1;
         size_t pack_size = 4;

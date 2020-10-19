@@ -16,7 +16,6 @@
 #include "include/mmad.cl"
 
 #define PACK_SIZE                   4
-#define OUTPUT_BLOCK_SIZE           4
 
 #define AS_TYPE(type, val)          CAT(as_, type)(val)
 #define ACCUMULATOR_TYPE_VEC        CAT(ACCUMULATOR_TYPE, SUB_GROUP_SIZE)
@@ -439,6 +438,7 @@ KERNEL(gemm_mmad_int8)(
 #if !TRANSPOSE_INPUT0
         const uint common_input0_offset = batch_offset_input0 + output_y_tile * TILE_SIZE_M * INPUT0_SIZE_X + k * TILE_SIZE_K;
 
+        // Loading the matrix A from the global memory to GRF
         for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
             tile_input0[i] = AS_TYPE(PACKED_INPUT0_TYPE, BLOCK_READ_INT(input0 + common_input0_offset + i * INPUT0_SIZE_X));
         }
@@ -452,6 +452,7 @@ KERNEL(gemm_mmad_int8)(
         MAKE_VECTOR_TYPE(INPUT0_TYPE, PACK_SIZE) temp_input0[SUB_GROUP_SIZE];
         const uint common_input0_offset = batch_offset_input0 + (k * TILE_SIZE_K + lid * PACK_SIZE) * INPUT0_SIZE_X + output_y_tile * TILE_SIZE_M;
 
+        // Loading the matrix A from the global memory to GRF
         for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
             temp_input0[i].s0 = input0[common_input0_offset + i];
             temp_input0[i].s1 = input0[common_input0_offset + 1 * INPUT0_SIZE_X + i];
@@ -461,6 +462,7 @@ KERNEL(gemm_mmad_int8)(
             tile_input00[i] = AS_TYPE(PACKED_INPUT0_TYPE, temp_input0[i]);
         }
 
+        // Calculating one chunk of the matrix C
         tile_output00 = MMAD(tile_input00, tile_input10, tile_output00);
 
 #endif // !TRANSPOSE_INPUT0
@@ -507,9 +509,16 @@ KERNEL(gemm_mmad_int8)(
 #undef AS_TYPE
 #undef ACCUMULATOR_TYPE_VEC
 #undef ACTIVATION_TYPE_VEC
+#undef TO_ACTIVATION_TYPE_VEC
+#undef INPUT2_TYPE_VEC
+#undef AS_INPUT2_TYPE_VEC
 #undef PACKED_INPUT0_TYPE_VEC
 #undef PACKED_INPUT1_TYPE_VEC
-#undef BLOCK_READ
+#undef INPUT1_TYPE_VEC
+#undef BLOCK_READ_INT
+#undef BLOCK_READ_CHAR
+#undef BLOCK_READ_INPUT2
+#undef BLOCK_WRITE
 #undef BLOCK_SHUFFLE
 #undef MMAD
 #undef TILE_SIZE_M_DIV

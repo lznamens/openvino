@@ -57,6 +57,7 @@ JitConstants GemmKernelMMADint8::GetJitConstants(const gemm_params& params) cons
     jit.AddConstant(MakeJitConstant("TILE_SIZE_M", td.simd_size * td.tile_num));
     jit.AddConstant(MakeJitConstant("TILE_SIZE_N", td.simd_size * 4));
     jit.AddConstant(MakeJitConstant("TILE_SIZE_K", td.simd_size * td.pack_size));
+    jit.AddConstant(MakeJitConstant("OUTPUT_BLOCK_SIZE", td.output_block_size));
     jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS_M", td.size_m % (td.simd_size * td.tile_num)));
     jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS_N", td.size_n % (td.simd_size * 4)));
     jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS_K", td.size_k % (td.simd_size * td.pack_size)));
