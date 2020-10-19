@@ -30,6 +30,8 @@ public:
         size_t simd_size = 16;
         size_t output_block_size = 4;
         const size_t pack_size = 4;
+
+        bool big_block_leftovers = false;
     };
 
     GemmKernelMMADint8() : GemmKernelBase("gemm_mmad_int8") {}

@@ -3263,66 +3263,66 @@ struct gemm_base_test_params {
     std::string kernel_name;
 };
 
-#define CASE_GEMM_INT8_NN_TRANSPOSITION 8, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, false, false, \
-1.5f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+#define CASE_GEMM_INT8_NN_TRANSPOSITION 64, 64, 64, 1, 2, 1, 2, 1, 2, 1, 2, false, false, \
+1.5f, 2.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_NT_TRANSPOSITION 32, 64, 32, 2, 1, 2, 1, 2, 1, 2, 1, false, true, \
-1.7f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.7f, 1.3f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_TN_TRANSPOSITION 128, 64, 32, 2, 2, 2, 2, 2, 2, 2, 2, true, false, \
 1.0f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_TT_TRANSPOSITION 32, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, true, true, \
-1.2f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.2f, 0.5f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 
 #define CASE_GEMM_INT8_BROADCAST_1 32, 32, 32, 1, 2, 1, 1, 1, 1, 1, 2, false, false, \
-1.5f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.5f, 2.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_BROADCAST_2 32, 32, 64, 2, 1, 1, 1, 1, 1, 2, 1, false, false, \
-1.7f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.7f, 1.3f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_BROADCAST_3 64, 32, 32, 1, 2, 2, 1, 1, 2, 2, 2, false, false, \
-1.0f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.0f, 1.5f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_BROADCAST_4 32, 64, 32, 1, 1, 2, 2, 2, 2, 2, 2, false, false, \
-1.2f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.2f, 0.5f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 
 #define CASE_GEMM_INT8_LEFTOVERS_1 13, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, false, false, \
-1.5f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.5f, 2.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_LEFTOVERS_2 13, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, false, true, \
-1.6f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.6f, 1.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_LEFTOVERS_3 13, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, true, false, \
-1.0f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.0f, 1.5f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_LEFTOVERS_4 13, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, true, true, \
-1.7f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.7f, 1.3f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_LEFTOVERS_5 32, 13, 32, 1, 1, 1, 1, 1, 1, 1, 1, false, false, \
-1.5f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.5f, 2.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_LEFTOVERS_6 32, 13, 32, 1, 1, 1, 1, 1, 1, 1, 1, false, true, \
-1.6f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.6f, 1.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_LEFTOVERS_7 32, 13, 32, 1, 1, 1, 1, 1, 1, 1, 1, true, false, \
-1.0f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.0f, 1.5f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_LEFTOVERS_8 32, 13, 32, 1, 1, 1, 1, 1, 1, 1, 1, true, true, \
-1.7f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.7f, 1.3f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_LEFTOVERS_9 32, 32, 13, 1, 1, 1, 1, 1, 1, 1, 1, false, false, \
-1.5f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.5f, 2.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_LEFTOVERS_10 32, 32, 13, 1, 1, 1, 1, 1, 1, 1, 1, false, true, \
-1.6f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.6f, 1.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_LEFTOVERS_11 32, 32, 13, 1, 1, 1, 1, 1, 1, 1, 1, true, false, \
-1.0f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.0f, 1.5f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_LEFTOVERS_12 32, 32, 13, 1, 1, 1, 1, 1, 1, 1, 1, true, true, \
-1.7f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.7f, 1.3f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 
 #define CASE_GEMM_INT8_COMBO_1 8, 8, 32, 1, 2, 1, 1, 1, 1, 1, 2, false, false, \
-1.5f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.5f, 2.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_COMBO_2 16, 16, 64, 2, 1, 1, 1, 1, 1, 2, 1, false, true, \
 1.7f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_COMBO_3 11, 31, 21, 7, 15, 7, 15, 7, 15, 7, 15, true, false, \
-1.0f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.0f, 1.5f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_COMBO_4 32, 32, 32, 3, 6, 3, 6, 3, 6, 3, 6, true, true, \
-1.2f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.2f, 4.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 
 #define CASE_GEMM_INT8_SLM_COMBO_1 64, 64, 64, 1, 2, 1, 1, 1, 1, 1, 2, false, false, \
-1.5f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.5f, 2.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_SLM_COMBO_2 384, 384, 64, 2, 1, 1, 1, 1, 1, 2, 1, false, false, \
 1.7f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_SLM_COMBO_3 128, 128, 64, 2, 3, 2, 3, 2, 3, 2, 3, false, false, \
-1.0f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.0f, 1.5f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 #define CASE_GEMM_INT8_SLM_COMBO_4 256, 64, 64, 3, 6, 3, 6, 3, 6, 3, 6, false, false, \
-1.2f, 0.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
+1.2f, 4.0f, data_types::i8, data_types::u8, data_types::f32, data_types::f32, {-128, 127, 1}, {0, 255, 1}, {-10, 10, 8}
 
 #define CASE_GEMM_FP32_TILED_NN_1 32, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, false, false, \
 1.5f, 2.0f, data_types::f32, data_types::f32, data_types::f32, data_types::f32, {-10, 10, 8}, {-10, 10, 8}, {-10, 10, 8}
@@ -3401,7 +3401,7 @@ struct gemm_base_test_params {
 #define CASE_GEMM_FP16_TILED_TT_2 32, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, true, true, \
 1.7f, 0.0f, data_types::f16, data_types::f16, data_types::f16, data_types::f16, {-1, 1, 1}, {-1, 1, 1}, {-1, 1, 1}
 #define CASE_GEMM_FP16_TILED_TT_3 64, 32, 64, 1, 1, 1, 1, 1, 1, 1, 1, true, true, \
-1.0f, 0.0f, data_types::f16, data_types::f16, data_types::f16, data_types::f16, {-1, 1, 1}, {-1, 1, 1}, {-1, 1, 1}
+1.0f, 1.5f, data_types::f16, data_types::f16, data_types::f16, data_types::f16, {-1, 1, 1}, {-1, 1, 1}, {-1, 1, 1}
 #define CASE_GEMM_FP16_TILED_TT_4 16, 128, 64, 1, 1, 1, 1, 1, 1, 1, 1, true, true, \
 1.0f, 4.0f, data_types::f16, data_types::f16, data_types::f16, data_types::f16, {-1, 1, 1}, {-1, 1, 1}, {-1, 1, 1}
 
@@ -3475,8 +3475,7 @@ public:
         set_values(input0_mem, input0_data_bfyx);
 
         auto input1_size = tensor((int)p.b1_num, (int)p.f1_num, (int)x1_size, (int)y1_size);
-        VVVVF<input1_type> input1_data = /*generate_random_4d<input1_type>(p.b1_num, p.f1_num, x1_size, y1_size, p.range1[0], p.range1[1], p.range1[2]);*/generate_counter_4d<input1_type>(p.b1_num, p.f1_num, x1_size, y1_size, 0);
-    
+        VVVVF<input1_type> input1_data = generate_random_4d<input1_type>(p.b1_num, p.f1_num, x1_size, y1_size, p.range1[0], p.range1[1], p.range1[2]);
         auto input1_data_bfyx = flatten_4d(format::bfyx, input1_data);
         auto input1_mem = memory::allocate(engine, { p.allocate1_type, format::bfyx, input1_size });
         set_values(input1_mem, input1_data_bfyx);

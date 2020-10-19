@@ -48,6 +48,8 @@ JitConstants GemmKernelMMADint8::GetJitConstants(const gemm_params& params) cons
     JitConstants jit = Parent::GetJitConstants(params);
     GemmTuningData td = SetTuningParams(params);
 
+    size_t size_n_leftovers_factor = td.big_block_leftovers ? 4 : td.output_block_size;
+
     jit.AddConstant(MakeJitConstant("SUB_GROUP_SIZE", td.simd_size));
     jit.Merge(MakeTypeJitConstants(Datatype::INT32, "ACCUMULATOR"));
     jit.Merge(MakeTypeJitConstants(Datatype::F32, "ACTIVATION"));
@@ -58,7 +60,7 @@ JitConstants GemmKernelMMADint8::GetJitConstants(const gemm_params& params) cons
     jit.AddConstant(MakeJitConstant("TILE_SIZE_K", td.simd_size * td.pack_size));
     jit.AddConstant(MakeJitConstant("OUTPUT_BLOCK_SIZE", td.output_block_size));
     jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS_M", td.size_m % td.simd_size));
-    jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS_N", td.size_n % (td.simd_size * td.output_block_size)));
+    jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS_N", td.size_n % (td.simd_size * size_n_leftovers_factor)));
     jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS_K", td.size_k % (td.simd_size * td.pack_size)));
 
     if (!params.fused_ops.empty()) {
@@ -134,8 +136,9 @@ GemmKernelMMADint8::GemmTuningData GemmKernelMMADint8::SetTuningParams(const gem
 
     if (no_transposition) {
         simd_size = 8; 
-        if (HasLeftovers(no_transposition, tuning_data, 8)) output_block_size = 1;
-        }
+        if (HasLeftovers(no_transposition, tuning_data, 8))
+            output_block_size = 1;
+    }
     else {
         output_block_size = 1;
 
@@ -144,11 +147,12 @@ GemmKernelMMADint8::GemmTuningData GemmKernelMMADint8::SetTuningParams(const gem
         bool small_matrices = mmad_operations_number <= 128 * 128 * 128;
 
         if ((leftovers_simd16 && !leftovers_simd8) || small_matrices)
-            { simd_size = 8; }
+            simd_size = 8;
     }
 
     tuning_data.simd_size = simd_size;
     tuning_data.output_block_size = output_block_size;
+    tuning_data.big_block_leftovers = no_transposition && output_block_size == 1 ? true : false;
 
     return tuning_data;
 }

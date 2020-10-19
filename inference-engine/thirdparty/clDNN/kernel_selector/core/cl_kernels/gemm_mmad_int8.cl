@@ -143,7 +143,7 @@ KERNEL(gemm_mmad_int8)(
 // ***************************************************************************************** //
 
 #if OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N || OUTPUT_LEFTOVERS_K
-{
+{if (get_global_id(0) == get_global_id(1) == get_global_id(2) == 0) printf("Mmad leftovers!\n");
     // Indices
     const uint output_x_tile = (uint)get_global_id(0) / TILE_SIZE_N;
     const uint output_y_tile = (uint)get_global_id(1);
@@ -171,7 +171,7 @@ KERNEL(gemm_mmad_int8)(
     PACKED_INPUT0_TYPE_VEC tile_input0;
     PACKED_INPUT1_TYPE_VEC tile_input1;
 #ifdef INPUT2_TYPE
-    ACTIVATION_TYPE_VEC tile_input2;
+    MAKE_VECTOR_TYPE(ACTIVATION_TYPE, SUB_GROUP_SIZE) tile_input2;
 #if OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N
     for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
         if (output_y_tile * TILE_SIZE_M + i >= OUTPUT_SIZE_Y) continue;
@@ -329,7 +329,7 @@ KERNEL(gemm_mmad_int8)(
 // ******************************************************************* //
 
 #else // OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N || OUTPUT_LEFTOVERS_K
-{
+{if (get_global_id(0) == get_global_id(1) == get_global_id(2) == 0) printf("Mmad no leftovers!\n");
     // Indices
     const uint output_x_tile = (uint)get_global_id(0) * OUTPUT_BLOCK_SIZE / TILE_SIZE_N;
     const uint output_y_tile = (uint)get_global_id(1);
