@@ -143,7 +143,7 @@ KERNEL(gemm_mmad_int8)(
 // ***************************************************************************************** //
 
 #if OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N || OUTPUT_LEFTOVERS_K
-{if (get_global_id(0) == get_global_id(1) == get_global_id(2) == 0) printf("Mmad leftovers!\n");
+{
     // Indices
     const uint output_x_tile = (uint)get_global_id(0) / TILE_SIZE_N;
     const uint output_y_tile = (uint)get_global_id(1);
@@ -329,7 +329,7 @@ KERNEL(gemm_mmad_int8)(
 // ******************************************************************* //
 
 #else // OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N || OUTPUT_LEFTOVERS_K
-{if (get_global_id(0) == get_global_id(1) == get_global_id(2) == 0) printf("Mmad no leftovers!\n");
+{
     // Indices
     const uint output_x_tile = (uint)get_global_id(0) * OUTPUT_BLOCK_SIZE / TILE_SIZE_N;
     const uint output_y_tile = (uint)get_global_id(1);
@@ -495,7 +495,7 @@ KERNEL(gemm_mmad_int8)(
 #if !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
     // We should calculate OUTPUT_BLOCK_SIZE chunks of the matrix C
         for (uint i = 0; i < OUTPUT_BLOCK_SIZE; i++) {
-            tile_output[i] = MMAD_8x8(tile_input0, tile_input1[i], tile_output[i]);
+            tile_output[i] = MMAD(tile_input0, tile_input1[i], tile_output[i]);
         }
 #else // !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
 
@@ -595,4 +595,3 @@ KERNEL(gemm_mmad_int8)(
 #undef BLOCK_WRITE
 #undef BLOCK_SHUFFLE
 #undef MMAD
-

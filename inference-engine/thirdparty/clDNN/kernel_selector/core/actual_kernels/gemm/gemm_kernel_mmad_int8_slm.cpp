@@ -148,7 +148,7 @@ KernelsData GemmKernelMMADslmInt8::GetKernelsData(const Params& params, const op
     GemmTuningData tuning_data = InitGemmTuningData(prim_params);
     auto mmad_operations_number = GetMmadOperationsNumber(tuning_data);
 
-    if ((mmad_operations_number >= 1024 * 1024 * 1024) || (tuning_data.size_m == 384 && tuning_data.size_k == 384 && tuning_data.size_n == 64) ||
+    if ((tuning_data.size_m == 384 && tuning_data.size_k == 384 && tuning_data.size_n == 64) ||
         (tuning_data.size_m == 384 && tuning_data.size_k == 64 && tuning_data.size_n == 384))
         k_data.estimatedTime = FORCE_PRIORITY_2;
     else if (mmad_operations_number <= 65536 || tuning_data.size_k <= 64)
