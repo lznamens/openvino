@@ -149,11 +149,11 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
 
         if (can_split && !enough_occupancy) {
             // TODO Try other split sizes
-            for (size_t split = 4; split < 5; ++split) {
+            for (size_t split = 4; split < 16; split *= 2) {
                 auto tmp_params = BlockParams{ block_width, 1, 1, block_features, in_block_width, 1, 1, split };
 
                 bool c_ifm_mul = CeilDiv(params.weights.IFM().v, fsv) % split == 0;
-                bool c_slm = EstimateSLMUsage(params, tmp_params) <= 1.f;
+                bool c_slm = EstimateSLMUsage(params, tmp_params) < 1.f;
                 bool c_lws = split * simd <= params.engineInfo.maxWorkGroupSize;
                 bool c_reg_pressure = EstimateRegPressure(params, tmp_params) <= max_reg_pressure;
                 bool c_occupancy = EstimateOccupancy(params, tmp_params) >= 1.f;
@@ -217,7 +217,7 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
 
             bool c_reg_pressure = EstimateRegPressure(params, tmp_params) <= max_reg_pressure;
             bool c_occupancy = EstimateOccupancy(params, tmp_params) >= 1.f;
-            bool c_slm = EstimateSLMUsage(params, tmp_params) <= 1.f;
+            bool c_slm = EstimateSLMUsage(params, tmp_params) < 1.f;
 
             if (c_reg_pressure && c_occupancy && c_slm) {
                 block_height = h;
@@ -283,14 +283,41 @@ float Convolution_kernel_b_fs_zyx_fsv16_imad::EstimateOccupancy(const convolutio
 }
 
 float Convolution_kernel_b_fs_zyx_fsv16_imad::EstimateSLMUsage(const convolution_params& params, const BlockParams& block) const {
-    size_t slm_elements = block.output_block_width * block.output_block_height * block.output_block_depth *
-                          block.output_block_features * (block.feature_slm_split - 1);
-    size_t slm_bytes = slm_elements * BytesPerElement(GetAccumulatorType(params));
+    if (block.feature_slm_split == 1) 
+        return 0;
 
-    // TODO:  Actual maximum slm should also depend on number of work-groups, but this is device specific
-    size_t max_slm_bytes = params.engineInfo.maxLocalMemSize;
+    size_t slm_elements_per_work_group = block.output_block_width * block.output_block_height * block.output_block_depth *
+                                         block.output_block_features * (block.feature_slm_split - 1);
+    size_t slm_bytes_per_work_group = slm_elements_per_work_group * BytesPerElement(GetAccumulatorType(params));
 
-    return static_cast<float>(slm_bytes) / static_cast<float>(max_slm_bytes);
+    const auto& output = params.output;
+    size_t work_groups_number = CeilDiv(output.X().v, block.output_block_width) *
+                                CeilDiv(output.Y().v, block.output_block_height) * 
+                                CeilDiv(output.Z().v, block.output_block_depth) *
+                                output.Batch().v *
+                                CeilDiv(params.weights.OFM().v, block.output_block_features) *
+                                params.groups;
+
+    constexpr size_t max_threads_per_compute_unit = 7;
+    constexpr size_t max_compute_units_per_sub_slice = 8;
+    constexpr size_t max_work_groups_per_sub_slice = 16;
+    size_t max_sub_slices_per_device = params.engineInfo.computeUnitsCount / max_compute_units_per_sub_slice;
+    // size_t max_work_groups_per_device = params.engineInfo.computeUnitsCount / max_compute_units_per_sub_slice * max_work_groups_per_sub_slice;
+
+    size_t threads_per_work_group = block.feature_slm_split;
+    size_t threads_per_sub_slice = max_threads_per_compute_unit * max_compute_units_per_sub_slice;
+    size_t current_max_work_groups_per_sub_slice = work_groups_number < max_sub_slices_per_device ?
+                                                   1 : threads_per_sub_slice / threads_per_work_group;
+
+    size_t max_slm_bytes_per_sub_slice = params.engineInfo.maxLocalMemSize;
+    float max_slm_bytes_per_work_group = static_cast<float>(max_slm_bytes_per_sub_slice) / static_cast<float>(current_max_work_groups_per_sub_slice);
+    max_slm_bytes_per_work_group = static_cast<float>(Align(static_cast<size_t>(max_slm_bytes_per_work_group), 1024));
+    if (max_slm_bytes_per_work_group * static_cast<float>(current_max_work_groups_per_sub_slice) > static_cast<float>(max_slm_bytes_per_sub_slice))
+        max_slm_bytes_per_work_group -= 1024.0;
+    printf("all_wg_num = %d all_ss = %d cur_slm_bytes = %d max_slm_bytes = %.0f current_wg_num = %d\n", (int)work_groups_number, (int)max_sub_slices_per_device, (int)slm_bytes_per_work_group, max_slm_bytes_per_work_group, (int)current_max_work_groups_per_sub_slice);
+    
+     
+    return static_cast<float>(slm_bytes_per_work_group) / static_cast<float>(max_slm_bytes_per_work_group);
 }
 
 ParamsKey Convolution_kernel_b_fs_zyx_fsv16_imad::GetSupportedKey() const {
