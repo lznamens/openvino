@@ -61,6 +61,7 @@ protected:
     };
 
     BlockParams GetBlockParams(const convolution_params& params) const;
+    float EstimateBlockParamsQuality(const convolution_params& params, const BlockParams& block) const;
     float EstimateRegPressure(const convolution_params& params, const BlockParams& block) const;
     float EstimateOccupancy(const convolution_params& params, const BlockParams& block) const;
     float EstimateSLMUsage(const convolution_params& params, const BlockParams& block) const;
