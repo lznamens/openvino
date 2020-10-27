@@ -62,7 +62,7 @@ inline uint FUNC(get_input0_batch_offset)(uint b, uint f, uint w, uint z) {
 #if INPUT0_SIMPLE
     return GET_DATA_INDEX_6D_SAFE(INPUT0, b, f, w, z, 0, 0);
 #else // INPUT0_SIMPLE
-#   error gemm_mmad_int8.cl : Unsupported input 0 format
+#   error gemm_mmad_int8.cl : unsupported input 0 format
 #endif // INPUT0_SIMPLE
 }
 
@@ -70,7 +70,7 @@ inline uint FUNC(get_input1_batch_offset)(uint b, uint f, uint w, uint z) {
 #if INPUT1_SIMPLE
     return GET_DATA_INDEX_6D_SAFE(INPUT1, b, f, w, z, 0, 0);
 #else // INPUT1_SIMPLE
-#   error gemm_mmad_int8.cl : Unsupported input 1 format
+#   error gemm_mmad_int8.cl : unsupported input 1 format
 #endif // INPUT1_SIMPLE
 }
 
@@ -79,7 +79,7 @@ inline uint FUNC(get_input2_batch_offset)(uint b, uint f, uint w, uint z) {
 #if INPUT2_SIMPLE
     return GET_DATA_INDEX_6D_SAFE(INPUT2, b, f, w, z, 0, 0);
 #else // INPUT2_SIMPLE
-#   error gemm_mmad_int8.cl : Unsupported input 2 format
+#   error gemm_mmad_int8.cl : unsupported input 2 format
 #endif // INPUT2_SIMPLE
 }
 #endif // INPUT2_TYPE
@@ -88,7 +88,7 @@ inline uint FUNC(get_output_batch_offset)(uint b, uint f, uint w, uint z) {
 #if OUTPUT_SIMPLE
     return GET_DATA_INDEX_6D(OUTPUT, b, f, w, z, 0, 0);
 #else // OUTPUT_SIMPLE
-#   error gemm_mmad_int8.cl : Unsupported output format
+#   error gemm_mmad_int8.cl : unsupported output format
 #endif // OUTPUT_SIMPLE
 }
 
@@ -506,12 +506,13 @@ KERNEL(gemm_mmad_int8)(
 
 #if !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
 
-#if HAS_FUSED_OPS 
+#if HAS_FUSED_OPS
+    // if (get_global_id(0) == 0 && get_global_id(1) == 0 && get_global_id(2) == 0) printf("params: m = %d n = %d k = %d alpha = %f beta = %f\n", INPUT0_SIZE_X, INPUT1_SIZE_X, INPUT1_SIZE_Y, ALPHA, BETA);
     uint output_x = output_x_tile * TILE_SIZE_N;
     uint output_y = output_y_tile * TILE_SIZE_M;
-#if FUSED_OPS_CAN_USE_PRELOAD
-    FUSED_OPS_PRELOAD;
-#endif // FUSED_OPS_CAN_USE_PRELOAD
+//#if FUSED_OPS_CAN_USE_PRELOAD
+//    FUSED_OPS_PRELOAD_VEC;
+//#endif // FUSED_OPS_CAN_USE_PRELOAD
 #endif // HAS_FUSED_OPS
 
     for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
@@ -528,13 +529,18 @@ KERNEL(gemm_mmad_int8)(
 #endif // INPUT2_TYPE
 
 #if HAS_FUSED_OPS
-#if FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS_CALC;
-#else // FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS;
-#endif // FUSED_OPS_CAN_USE_PRELOAD
-        MAKE_VECTOR_TYPE(OUTPUT_TYPE, OUTPUT_BLOCK_SIZE) res = FUSED_OPS_RESULT;
+        MAKE_VECTOR_TYPE(OUTPUT_TYPE, OUTPUT_BLOCK_SIZE) res;
+        for (uint k = 0; k < OUTPUT_BLOCK_SIZE; k++) {
+//#if FUSED_OPS_CAN_USE_PRELOAD
+//            FUSED_OPS_CALC_VEC;
+//#else // FUSED_OPS_CAN_USE_PRELOAD
+            FUSED_OPS_VEC;
+//#endif // FUSED_OPS_CAN_USE_PRELOAD
+            res[k] = FUSED_OPS_RESULT_VEC;
+            output_x += SUB_GROUP_SIZE;
+        }           
         BLOCK_WRITE(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, res);
+        output_x -= TILE_SIZE_N;
         output_y++;
 #else // HAS_FUSED_OPS
         BLOCK_WRITE(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, dequantized);

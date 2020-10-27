@@ -2568,7 +2568,7 @@ INSTANTIATE_TEST_CASE_P(fusings_gpu, fc_int8_scale_activation_quantize_i8,
 #define CASE_GEMM_ELTWISE_2IN_FP32_1 {{1, 1, 4, 4}, {1, 1, 4, 4}}, {1, 1, 4, 4}, tensor{1}, tensor{0}, data_types::f32, data_types::f32, data_types::f32, format::bfyx, data_types::f32, format::bfyx
 #define CASE_GEMM_ELTWISE_2IN_FP16_1 {{1, 1, 32, 32}, {1, 1, 32, 32}}, {1, 1, 32, 32}, tensor{1}, tensor{0}, data_types::f16, data_types::f16, data_types::f16, format::bfyx, data_types::f16, format::bfyx
 #define CASE_GEMM_ELTWISE_2IN_U8S8_1 {{1, 1, 4, 4}, {1, 1, 4, 4}}, {1, 1, 4, 4}, tensor{1}, tensor{0}, data_types::u8, data_types::i8, data_types::u8, format::bfyx, data_types::f32, format::bfyx
-#define CASE_GEMM_ELTWISE_2IN_S8U8_1 {{1, 1, 32, 32}, {1, 1, 32, 32}}, {1, 1, 32, 32}, tensor{1}, tensor{0}, data_types::i8, data_types::u8, data_types::u8, format::bfyx, data_types::f32, format::bfyx
+#define CASE_GEMM_ELTWISE_2IN_S8U8_1 {{1, 1, 64, 64}, {1, 1, 64, 64}}, {1, 1, 64, 64}, tensor{1}, tensor{0}, data_types::i8, data_types::u8, data_types::u8, format::bfyx, data_types::f32, format::bfyx
 
 class gemm_3in_quantize_i8 : public GemmFusingTest {};
 TEST_P(gemm_3in_quantize_i8, basic) {
@@ -2725,6 +2725,10 @@ INSTANTIATE_TEST_CASE_P(fusings_gpu, gemm_2in_act_scale_quantize_eltwise_i8,
 
 class gemm_2in_act_scale_eltwise : public GemmFusingTest {};
 TEST_P(gemm_2in_act_scale_eltwise, basic) {
+    // cldnn::engine_configuration conf;
+    // conf.sources_dumps_dir = "E:/znamenskiy/test_dumps/";
+    // cldnn::engine test_engine(engine_types::ocl, device::create_default(), conf);
+
     auto p = GetParam();
     create_topologies(input_layout("input0", get_input_layout(p, 0)),
         input_layout("input1", get_input_layout(p, 1)),

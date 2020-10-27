@@ -214,6 +214,7 @@ ExecutableNetworkInternal::Ptr clDNNEngine::LoadExeNetworkImpl(const InferenceEn
     check_inputs(_networkInputs);
 
     CLDNNPlugin::Config conf = _impl->m_config;
+    // conf.sources_dumps_dir = "E:/znamenskiy/dumps/";
     auto device_info = GetDeviceInfo(config);
     conf.enableInt8 = device_info.supports_imad || device_info.supports_immad;
     conf.UpdateFromMap(config);

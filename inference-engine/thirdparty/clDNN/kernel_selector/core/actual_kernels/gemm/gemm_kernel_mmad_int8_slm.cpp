@@ -62,8 +62,14 @@ JitConstants GemmKernelMMADslmInt8::GetJitConstants(const gemm_params& params) c
 
     if (!params.fused_ops.empty()) {
         auto input_dt = GetActivationType(params);
-        FusedOpsConfiguration conf_vec = { "_VEC", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, td.output_block_size };
-        conf_vec.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
+        FusedOpsConfiguration conf_vec = {  "_VEC",
+                                            { "b", "f", "output_y", "(output_x + lid0)" },
+                                            "dequantized[k]",
+                                            input_dt,
+                                            1,
+                                            LoadType::LT_UNALIGNED,
+                                            BoundaryCheck::DISABLED };  
+        // conf_vec.SetLoopAxes({ Tensor::DataChannelName::Y, Tensor::DataChannelName::X }, true);
         jit.Merge(MakeFusedOpsJitConstants(params, { conf_vec }));
     }
 
