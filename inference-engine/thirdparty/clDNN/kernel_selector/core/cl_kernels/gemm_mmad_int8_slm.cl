@@ -206,9 +206,9 @@ KERNEL(gemm_mmad_int8_slm)(
 #if HAS_FUSED_OPS
     uint output_x = output_x_tile * SLM_TILE_SIZE_N;
     uint output_y = output_y_tile * SUB_GROUP_SIZE;
-//#if FUSED_OPS_CAN_USE_PRELOAD
-//    FUSED_OPS_PRELOAD_VEC;
-//#endif // FUSED_OPS_CAN_USE_PRELOAD
+#if FUSED_OPS_CAN_USE_PRELOAD
+    FUSED_OPS_PRELOAD_VEC;
+#endif // FUSED_OPS_CAN_USE_PRELOAD
 #endif // HAS_FUSED_OPS
 
     // Last calculations and writing result in the global memory
@@ -228,11 +228,11 @@ KERNEL(gemm_mmad_int8_slm)(
 #if HAS_FUSED_OPS
         MAKE_VECTOR_TYPE(OUTPUT_TYPE, OUTPUT_BLOCK_SIZE) res;
         for (uint k = 0; k < OUTPUT_BLOCK_SIZE; k++) {
-//#if FUSED_OPS_CAN_USE_PRELOAD
-//            FUSED_OPS_CALC_VEC;
-//#else // FUSED_OPS_CAN_USE_PRELOAD
+#if FUSED_OPS_CAN_USE_PRELOAD
+            FUSED_OPS_CALC_VEC;
+#else // FUSED_OPS_CAN_USE_PRELOAD
             FUSED_OPS_VEC;
-//#endif // FUSED_OPS_CAN_USE_PRELOAD
+#endif // FUSED_OPS_CAN_USE_PRELOAD
             res[k] = FUSED_OPS_RESULT_VEC;
             output_x += SUB_GROUP_SIZE;
         }

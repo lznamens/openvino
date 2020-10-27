@@ -69,7 +69,7 @@ JitConstants GemmKernelMMADslmInt8::GetJitConstants(const gemm_params& params) c
                                             1,
                                             LoadType::LT_UNALIGNED,
                                             BoundaryCheck::DISABLED };  
-        // conf_vec.SetLoopAxes({ Tensor::DataChannelName::Y, Tensor::DataChannelName::X }, true);
+        conf_vec.SetLoopAxes({ Tensor::DataChannelName::Y, Tensor::DataChannelName::X }, true);
         jit.Merge(MakeFusedOpsJitConstants(params, { conf_vec }));
     }
 
@@ -158,7 +158,7 @@ KernelsData GemmKernelMMADslmInt8::GetKernelsData(const Params& params, const op
         (tuning_data.size_m == 384 && tuning_data.size_k == 64 && tuning_data.size_n == 384))
         k_data.estimatedTime = FORCE_PRIORITY_2;
     else if (mmad_operations_number <= 65536 || tuning_data.size_k <= 64)
-        k_data.estimatedTime = DONT_USE_IF_HAVE_SOMETHING_ELSE;
+        k_data.estimatedTime = FORCE_PRIORITY_1;//DONT_USE_IF_HAVE_SOMETHING_ELSE;
     else
         k_data.estimatedTime = FORCE_PRIORITY_5;
 
