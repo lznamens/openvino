@@ -468,6 +468,7 @@ struct FusedOpsConfiguration {
     bool allow_for_partial_preload;
     // Load index for shuffle fused op
     std::string shuffle_var_name;
+    bool always_simple_reading_in_scale;
 
     FusedOpsConfiguration(std::string suffix,
                           std::vector<std::string> bfzyx_idx_order,
@@ -480,7 +481,8 @@ struct FusedOpsConfiguration {
                           Tensor::DataChannelName vec_axis = Tensor::DataChannelName::COUNT,
                           std::vector<Tensor::DataChannelName> loop_axes = {},
                           bool allow_for_partial_preload = false,
-                          std::string shuffle_var_name = "")
+                          std::string shuffle_var_name = "",
+                          bool always_simple_reading_in_scale = false)
       : suffix(suffix)
       , bfzyx_idx_order(bfzyx_idx_order)
       , input_var_name(input_var_name)
@@ -492,12 +494,14 @@ struct FusedOpsConfiguration {
       , index_type(index_type)
       , loop_axes(loop_axes)
       , allow_for_partial_preload(allow_for_partial_preload)
-      , shuffle_var_name(shuffle_var_name) { }
+      , shuffle_var_name(shuffle_var_name)
+      , always_simple_reading_in_scale(always_simple_reading_in_scale) { }
 
     FusedOpsConfiguration& SetVectorSize(size_t val) { vec_size = val; return *this; }
     FusedOpsConfiguration& SetLoadType(LoadType val) { load_type = val; return *this; }
     FusedOpsConfiguration& SetBoundaryCheck(BoundaryCheck val) { boundary_check = val; return *this; }
     FusedOpsConfiguration& SetIndexType(IndexType val) { index_type = val; return *this; }
+    FusedOpsConfiguration& SetScaleSimpleRead(bool val) { always_simple_reading_in_scale = val; return *this; }
     FusedOpsConfiguration& SetVectorAxis(Tensor::DataChannelName val) { vec_axis = val; return *this; }
     FusedOpsConfiguration& SetLoopAxes(std::vector<Tensor::DataChannelName> val, bool partial_preload = false) {
         loop_axes = std::move(val);

@@ -86,7 +86,7 @@ KERNEL(gemm_tiled_opt)(
     , FUSED_OPS_DECLS
 #endif // HAS_FUSED_OPS_DECLS
     )
-{
+{if (get_global_id(0) == 0 && get_global_id(1)==0 && get_global_id(2)==0) printf("Tiled opt!\n");
     const uint tile_n_num = (uint)get_group_id(0);
     const uint tile_m_num = (uint)get_group_id(1);
     const uint tile_m_size = (uint)get_global_size(1);

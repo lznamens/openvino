@@ -204,13 +204,14 @@ KERNEL(gemm_mmad_int8_slm)(
     } // End of the loop by "k"
 
 #if HAS_FUSED_OPS
-    uint output_x = output_x_tile * SLM_TILE_SIZE_N;
+    uint output_x = output_x_tile * SLM_TILE_SIZE_N + lid0;
     uint output_y = output_y_tile * SUB_GROUP_SIZE;
-#if FUSED_OPS_CAN_USE_PRELOAD
+    uint output_f = f;
+/*#if FUSED_OPS_CAN_USE_PRELOAD
     FUSED_OPS_PRELOAD_VEC;
-#endif // FUSED_OPS_CAN_USE_PRELOAD
+#endif*/ // FUSED_OPS_CAN_USE_PRELOAD
 #endif // HAS_FUSED_OPS
-
+    if (get_global_id(0) == 0 && get_global_id(1) == 0) printf("feature = %d!\n", f);
     // Last calculations and writing result in the global memory
     for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
         MAKE_VECTOR_TYPE(ACCUMULATOR_TYPE, 4) reg_tile_output_temp;
@@ -227,17 +228,18 @@ KERNEL(gemm_mmad_int8_slm)(
 
 #if HAS_FUSED_OPS
         MAKE_VECTOR_TYPE(OUTPUT_TYPE, OUTPUT_BLOCK_SIZE) res;
-        for (uint k = 0; k < OUTPUT_BLOCK_SIZE; k++) {
-#if FUSED_OPS_CAN_USE_PRELOAD
-            FUSED_OPS_CALC_VEC;
-#else // FUSED_OPS_CAN_USE_PRELOAD
+        // for (uint k = 0; k < OUTPUT_BLOCK_SIZE; k++) {
+//#if FUSED_OPS_CAN_USE_PRELOAD
+//            FUSED_OPS_CALC_VEC;
+//#else // FUSED_OPS_CAN_USE_PRELOAD
             FUSED_OPS_VEC;
-#endif // FUSED_OPS_CAN_USE_PRELOAD
-            res[k] = FUSED_OPS_RESULT_VEC;
-            output_x += SUB_GROUP_SIZE;
-        }
+//#endif // FUSED_OPS_CAN_USE_PRELOAD
+            //res[k] = FUSED_OPS_RESULT_VEC;
+            //output_x += SUB_GROUP_SIZE;
+            res = FUSED_OPS_RESULT_VEC;
+        // }
         BLOCK_WRITE(output, batch_offset_output + (output_y_tile * SUB_GROUP_SIZE + i) * OUTPUT_SIZE_X + output_x_tile * SLM_TILE_SIZE_N, res);
-        output_x -= SLM_TILE_SIZE_N;
+        // output_x -= SLM_TILE_SIZE_N;
         output_y++;
 #else // HAS_FUSED_OPS
         BLOCK_WRITE(output, batch_offset_output + (output_y_tile * SUB_GROUP_SIZE + i) * OUTPUT_SIZE_X + output_x_tile * SLM_TILE_SIZE_N, dequantized);

@@ -67,13 +67,14 @@ JitConstants GemmKernelMMADint8::GetJitConstants(const gemm_params& params) cons
         auto input_dt = GetActivationType(params);
         FusedOpsConfiguration conf = { "", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
         FusedOpsConfiguration conf_vec = {  "_VEC",
-                                            { "b", "f", "output_y", "(output_x + lid)" },
-                                            "dequantized[k]",
+                                            { "b", "f", "output_y", "output_x" },
+                                            "dequantized",
                                             input_dt,
-                                            1,
-                                            LoadType::LT_UNALIGNED,
+                                            td.output_block_size,
+                                            LoadType::LT_ALIGNED_READ,
                                             BoundaryCheck::DISABLED };  
-        //conf_vec.SetLoopAxes({ Tensor::DataChannelName::X, Tensor::DataChannelName::Y }, true); 
+        conf_vec.SetLoopAxes({Tensor::DataChannelName::Y}, true);
+        conf_vec.SetVectorAxis(Tensor::DataChannelName::X);
         jit.Merge(MakeFusedOpsJitConstants(params, { conf, conf_vec }));
     }
 
@@ -202,7 +203,7 @@ KernelsData GemmKernelMMADint8::GetKernelsData(const Params& params, const optio
 bool GemmKernelMMADint8::Validate(const Params& params, const optional_params& options) const {
     if (!Parent::Validate(params, options))
         return false;
-
+    return false;
     const auto& gmm_params = static_cast<const gemm_params&>(params);
     auto input0_type = gmm_params.inputs[0].GetDType();
     auto input1_type = gmm_params.inputs[1].GetDType();

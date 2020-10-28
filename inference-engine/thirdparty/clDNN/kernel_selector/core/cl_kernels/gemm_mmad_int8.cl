@@ -510,9 +510,9 @@ KERNEL(gemm_mmad_int8)(
     // if (get_global_id(0) == 0 && get_global_id(1) == 0 && get_global_id(2) == 0) printf("params: m = %d n = %d k = %d alpha = %f beta = %f\n", INPUT0_SIZE_X, INPUT1_SIZE_X, INPUT1_SIZE_Y, ALPHA, BETA);
     uint output_x = output_x_tile * TILE_SIZE_N;
     uint output_y = output_y_tile * TILE_SIZE_M;
-//#if FUSED_OPS_CAN_USE_PRELOAD
-//    FUSED_OPS_PRELOAD_VEC;
-//#endif // FUSED_OPS_CAN_USE_PRELOAD
+#if FUSED_OPS_CAN_USE_PRELOAD
+    FUSED_OPS_PRELOAD_VEC;
+#endif // FUSED_OPS_CAN_USE_PRELOAD
 #endif // HAS_FUSED_OPS
 
     for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
@@ -530,17 +530,17 @@ KERNEL(gemm_mmad_int8)(
 
 #if HAS_FUSED_OPS
         MAKE_VECTOR_TYPE(OUTPUT_TYPE, OUTPUT_BLOCK_SIZE) res;
-        for (uint k = 0; k < OUTPUT_BLOCK_SIZE; k++) {
-//#if FUSED_OPS_CAN_USE_PRELOAD
-//            FUSED_OPS_CALC_VEC;
-//#else // FUSED_OPS_CAN_USE_PRELOAD
+        //for (uint k = 0; k < OUTPUT_BLOCK_SIZE; k++) {
+#if FUSED_OPS_CAN_USE_PRELOAD
+            FUSED_OPS_CALC_VEC;
+#else // FUSED_OPS_CAN_USE_PRELOAD
             FUSED_OPS_VEC;
-//#endif // FUSED_OPS_CAN_USE_PRELOAD
-            res[k] = FUSED_OPS_RESULT_VEC;
-            output_x += SUB_GROUP_SIZE;
-        }           
+#endif // FUSED_OPS_CAN_USE_PRELOAD
+        //    res[k] = FUSED_OPS_RESULT_VEC;
+        //    output_x += SUB_GROUP_SIZE;
+        //}           
         BLOCK_WRITE(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, res);
-        output_x -= TILE_SIZE_N;
+        //output_x -= TILE_SIZE_N;
         output_y++;
 #else // HAS_FUSED_OPS
         BLOCK_WRITE(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, dequantized);

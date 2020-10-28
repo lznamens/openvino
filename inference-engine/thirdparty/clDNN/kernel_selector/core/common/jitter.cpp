@@ -19,6 +19,7 @@
 #include <string>
 #include <memory>
 #include <utility>
+#include <iostream>
 
 #include <quantize/quantize_kernel_params.h>
 #include <eltwise/eltwise_kernel_base.h>
@@ -1694,7 +1695,12 @@ std::string FusedOpsCodeGenerator::GetJitLoad(const FusedOpsConfiguration& conf,
         input_tensor.GetLayout() != prim_output.GetLayout() && conf.vec_size > 1) {
         throw std::runtime_error("[clDNN] Mixed layouts of input tensors are not supported in fused eltwise");
     }
-
+    bool simple_reading = false;
+    if ((desc.output_tensor.GetLayout() == DataLayout::bfyx || desc.output_tensor.GetLayout() == DataLayout::bfzyx || 
+        desc.output_tensor.GetLayout() == DataLayout::bfwzyx) && (desc.GetType() == KernelType::SCALE || desc.GetType() == KernelType::QUANTIZE))
+        simple_reading = true;     
+    //bool simple_reading = (desc.GetType() == KernelType::SCALE || desc.GetType() == KernelType::QUANTIZE) && conf.always_simple_reading_in_scale ? true : false;
+    if (desc.GetType() == KernelType::QUANTIZE) printf("simple_reading = %d always = %d\n", (int)simple_reading, (int)conf.always_simple_reading_in_scale);
     if (conf.vec_axis != Tensor::DataChannelName::COUNT &&
         DataTensor::Extract(input_tensor.GetLayout(), conf.vec_axis, input_tensor.GetDims()).v != 1) {
         vec_size = conf.vec_size;
@@ -1722,7 +1728,7 @@ std::string FusedOpsCodeGenerator::GetJitLoad(const FusedOpsConfiguration& conf,
         // 1. Boundary checks for safe load
         // 2. If in given configuration data can't be loaded by a simple UNIT_BLOCK_READx call or load from casted ptr,
         //    we can gather the data to vector
-        if (conf.load_type == FusedOpsConfiguration::LoadType::LT_ALIGNED_READ) {
+        if (conf.load_type == FusedOpsConfiguration::LoadType::LT_ALIGNED_READ && !simple_reading) {
             std::string vs = vec_size > 1 ? std::to_string(vec_size)  : "";
             std::string block_read;
 
@@ -1743,15 +1749,33 @@ std::string FusedOpsCodeGenerator::GetJitLoad(const FusedOpsConfiguration& conf,
             }
 
             if (vec_size > 1) {
+                printf("Scenario 1!\n"); 
+                if (desc.GetType() == KernelType::ELTWISE) printf("ELTWISE!\n");
+                if (desc.GetType() == KernelType::QUANTIZE) printf("QUANTIZE!\n");
+                if (desc.GetType() == KernelType::SCALE) printf("SCALE!\n");
+                if (desc.GetType() == KernelType::ACTIVATION) printf("ACTIVATION!\n");
                 return block_read;
             } else if (input_tensor.LogicalSize() > 1) {
+                if (desc.GetType() == KernelType::ELTWISE) printf("ELTWISE!\n");
+                if (desc.GetType() == KernelType::QUANTIZE) printf("QUANTIZE!\n");
+                if (desc.GetType() == KernelType::SCALE) printf("SCALE!\n");
+                if (desc.GetType() == KernelType::ACTIVATION) printf("ACTIVATION!\n");printf("Scenario 2!\n");
                 // Currently we assume that in such scenario we can safely load sub_group_size elements from the pointer
                 return Broadcast(block_read, input_dt, conf.vec_size);
             } else {
+                if (desc.GetType() == KernelType::ELTWISE) printf("ELTWISE!\n");
+                if (desc.GetType() == KernelType::QUANTIZE) printf("QUANTIZE!\n");
+                if (desc.GetType() == KernelType::SCALE) printf("SCALE!\n");
+                if (desc.GetType() == KernelType::ACTIVATION) printf("ACTIVATION!\n");printf("Scenario 3!\n");
                 // Input has only one element, so broadcast it for the whole vector size
+                std::cout << Broadcast(GetInputPtrName(input_id) + "[" + index_func_call + "]", input_dt, conf.vec_size) << std::endl;
                 return Broadcast(GetInputPtrName(input_id) + "[" + index_func_call + "]", input_dt, conf.vec_size);
             }
         } else {
+            if (desc.GetType() == KernelType::ELTWISE) printf("ELTWISE!\n");
+                if (desc.GetType() == KernelType::QUANTIZE) printf("QUANTIZE!\n");
+                if (desc.GetType() == KernelType::SCALE) printf("SCALE!\n");
+                if (desc.GetType() == KernelType::ACTIVATION) printf("ACTIVATION!\n");printf("Scenario simple! vec_size = %d\n", (int)vec_size);
             if (vec_size > 1) {
                 return "((const __global " + toCLType(input_dt) + std::to_string(vec_size) + "*)(" +
                        GetInputPtrName(input_id) + " + " + index_func_call_vec + "))[0]";

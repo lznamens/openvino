@@ -160,6 +160,7 @@ JitConstants GemmKernelTiledOpt::GetJitConstants(const gemm_params& params) cons
                                            BoundaryCheck::ENABLED,
                                            IndexType::TENSOR_COORD,
                                            Tensor::DataChannelName::Y };
+        conf_vec.SetVectorAxis(Tensor::DataChannelName::X);
         FusedOpsConfiguration conf_scalar = { "_SCALAR", {"b", "f", "(y + write_id)", "x"},
                                                "dequantized",
                                                input_dt,
@@ -183,7 +184,7 @@ KernelsData GemmKernelTiledOpt::GetKernelsData(const Params& params, const optio
 bool GemmKernelTiledOpt::Validate(const Params& params, const optional_params& options) const {
     if (!Parent::Validate(params, options))
         return false;
-
+    //return false;
     const auto& gmm_params = static_cast<const gemm_params&>(params);
     bool gemm_leftovers = gmm_params.inputs[0].X().v % 16 || gmm_params.inputs[0].Y().v % 16 ||
                           gmm_params.inputs[1].X().v % 16 || gmm_params.inputs[1].Y().v % 16;
