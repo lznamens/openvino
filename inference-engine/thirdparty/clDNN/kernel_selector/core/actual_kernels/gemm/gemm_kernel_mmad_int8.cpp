@@ -48,24 +48,38 @@ JitConstants GemmKernelMMADint8::GetJitConstants(const gemm_params& params) cons
     JitConstants jit = Parent::GetJitConstants(params);
     GemmTuningData td = SetTuningParams(params);
 
+    size_t size_n_leftovers_factor = td.big_block_leftovers ? 4 : td.output_block_size;
+
     jit.AddConstant(MakeJitConstant("SUB_GROUP_SIZE", td.simd_size));
     jit.Merge(MakeTypeJitConstants(Datatype::INT32, "ACCUMULATOR"));
     jit.Merge(MakeTypeJitConstants(Datatype::F32, "ACTIVATION"));
     jit.Merge(MakeTypeJitConstants(params.inputs[0].GetDType() == Datatype::INT8 ? Datatype::INT32 : Datatype::UINT32, "PACKED_INPUT0"));
     jit.Merge(MakeTypeJitConstants(params.inputs[1].GetDType() == Datatype::INT8 ? Datatype::INT32 : Datatype::UINT32, "PACKED_INPUT1"));
-    jit.AddConstant(MakeJitConstant("TILE_NUM", td.tile_num));
-    jit.AddConstant(MakeJitConstant("TILE_SIZE_M", td.simd_size * td.tile_num));
-    jit.AddConstant(MakeJitConstant("TILE_SIZE_N", td.simd_size));
+    jit.AddConstant(MakeJitConstant("TILE_SIZE_M", td.simd_size));
+    jit.AddConstant(MakeJitConstant("TILE_SIZE_N", td.simd_size * td.output_block_size));
     jit.AddConstant(MakeJitConstant("TILE_SIZE_K", td.simd_size * td.pack_size));
-    jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS_M", td.size_m % (td.simd_size * td.tile_num)));
-    jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS_N", td.size_n % td.simd_size));
+    jit.AddConstant(MakeJitConstant("OUTPUT_BLOCK_SIZE", td.output_block_size));
+    jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS_M", td.size_m % td.simd_size));
+    jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS_N", td.size_n % (td.simd_size * size_n_leftovers_factor)));
     jit.AddConstant(MakeJitConstant("OUTPUT_LEFTOVERS_K", td.size_k % (td.simd_size * td.pack_size)));
 
     if (!params.fused_ops.empty()) {
         auto input_dt = GetActivationType(params);
-        FusedOpsConfiguration conf = { "", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
-        conf.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
-        jit.Merge(MakeFusedOpsJitConstants(params, { conf }));
+        FusedOpsConfiguration conf_scalar = { "_SCALAR",
+                                              {"b", "f", "output_y", "output_x"},
+                                              "dequantized",
+                                              input_dt,
+                                              1 };
+        FusedOpsConfiguration conf_vec = { "_VEC",
+                                           { "b", "f", "output_y", "output_x" },
+                                           "dequantized",
+                                           input_dt,
+                                           td.output_block_size,
+                                           LoadType::LT_ALIGNED_READ,
+                                           BoundaryCheck::DISABLED };
+        conf_vec.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
+        conf_vec.SetVectorAxis(Tensor::DataChannelName::X);
+        jit.Merge(MakeFusedOpsJitConstants(params, { conf_scalar, conf_vec }));
     }
 
     return jit;
@@ -75,15 +89,19 @@ GemmKernelBase::DispatchData GemmKernelMMADint8::SetDefault(const gemm_params& p
     const auto& output = params.output;
     auto total_batches = output.LogicalSize() / (output.X().v * output.Y().v);
 
-    DispatchData dispatchData;
+    DispatchData kd;
     GemmTuningData td = SetTuningParams(params);
 
-    dispatchData.gws = { Align(output.X().v, td.simd_size),
-                         Align(output.Y().v, td.simd_size * td.tile_num) / (td.simd_size * td.tile_num),
-                         total_batches };
-    dispatchData.lws = { td.simd_size, 1, 1 };
+    std::vector<size_t> global = { Align(output.X().v / td.output_block_size, td.simd_size),
+                                   Align(output.Y().v, td.simd_size) / td.simd_size,
+                                   total_batches };
 
-    return dispatchData;
+    std::vector<size_t> local = { td.simd_size, 1, 1 };
+
+    kd.gws = { global[0], global[1], global[2] };
+    kd.lws = { local[0], local[1], local[2] };
+
+    return kd;
 }
 
 GemmKernelMMADint8::GemmTuningData GemmKernelMMADint8::InitGemmTuningData(const gemm_params& params) const {
@@ -100,15 +118,17 @@ inline size_t GemmKernelMMADint8::GetMmadOperationsNumber(const GemmTuningData& 
     return tuning_data.size_m * tuning_data.size_n * tuning_data.size_k;
 }
 
-bool GemmKernelMMADint8::HasLeftovers(const GemmTuningData& tuning_data, int tile_size) const {
-    if (tile_size == 32) {
-        return tuning_data.size_m % 32 || tuning_data.size_n % 16 || tuning_data.size_k % 64;
-    } else if (tile_size == 16) {
-        return tuning_data.size_m % 16 || tuning_data.size_n % 16 || tuning_data.size_k % 64;
-    } else if (tile_size == 8) {
-        return tuning_data.size_m % 8 || tuning_data.size_n % 8 || tuning_data.size_k % 32;
+bool GemmKernelMMADint8::HasLeftovers(bool no_transposition, const GemmTuningData& tuning_data, int tile_size) const {
+    if (no_transposition) {
+        return tuning_data.size_m % 8 || tuning_data.size_n % 32 || tuning_data.size_k % 32;
     } else {
-        return true;
+        if (tile_size == 16) {
+            return tuning_data.size_m % 16 || tuning_data.size_n % 16 || tuning_data.size_k % 64;
+        } else if (tile_size == 8) {
+            return tuning_data.size_m % 8 || tuning_data.size_n % 8 || tuning_data.size_k % 32;
+        } else {
+            return true;
+        }
     }
 }
 
@@ -116,24 +136,30 @@ GemmKernelMMADint8::GemmTuningData GemmKernelMMADint8::SetTuningParams(const gem
     GemmTuningData tuning_data = InitGemmTuningData(params);
     auto mmad_operations_number = GetMmadOperationsNumber(tuning_data);
 
-    bool leftovers_simd16x2 = HasLeftovers(tuning_data, 16*2);
-    bool leftovers_simd16 = HasLeftovers(tuning_data, 16);
-    bool leftovers_simd8 = HasLeftovers(tuning_data, 8);
-
-    bool small_matrices = mmad_operations_number <= 128 * 128 * 128;
-    bool very_big_matrices = mmad_operations_number >= 1024 * 1024 * 1024;
-    bool no_input2 = params.inputs.size() == 3 ? false : true;
+    bool no_transposition = !params.transpose_input0 && !params.transpose_input1;
 
     size_t simd_size = 16;
-    size_t tile_num = 1;
+    size_t output_block_size = 4;
 
-    if (!leftovers_simd16x2 && very_big_matrices && no_input2)
-        { simd_size = 16; tile_num = 2; }
-    else if ((leftovers_simd16 && !leftovers_simd8) || small_matrices)
-        { simd_size = 8; }
+    if (no_transposition) {
+        simd_size = 8;
+        if (HasLeftovers(no_transposition, tuning_data, 8))
+            output_block_size = 1;
+    }
+    else {
+        output_block_size = 1;
+
+        bool leftovers_simd16 = HasLeftovers(no_transposition, tuning_data, 16);
+        bool leftovers_simd8 = HasLeftovers(no_transposition, tuning_data, 8);
+        bool small_matrices = mmad_operations_number <= 128 * 128 * 128;
+
+        if ((leftovers_simd16 && !leftovers_simd8) || small_matrices)
+            simd_size = 8;
+    }
 
     tuning_data.simd_size = simd_size;
-    tuning_data.tile_num = tile_num;
+    tuning_data.output_block_size = output_block_size;
+    tuning_data.big_block_leftovers = no_transposition && output_block_size == 1 ? true : false;
 
     return tuning_data;
 }
@@ -145,7 +171,7 @@ KernelsData GemmKernelMMADint8::GetKernelsData(const Params& params, const optio
 
     const auto& prim_params = static_cast<const gemm_params&>(params);
 
-    auto dispatchData = GemmKernelMMADint8::SetDefault(prim_params);
+    auto run_info = GemmKernelMMADint8::SetDefault(prim_params);
     KernelData k_data = KernelData::Default<gemm_params>(params);
 
     auto cldnn_jit = GetJitConstants(prim_params);
@@ -154,7 +180,7 @@ KernelsData GemmKernelMMADint8::GetKernelsData(const Params& params, const optio
 
     auto& kernel = k_data.kernels[0];
     FillCLKernelData(kernel,
-                     dispatchData,
+                     run_info,
                      params.engineInfo,
                      kernelName,
                      jit,

@@ -27,10 +27,12 @@ public:
         size_t size_n;
         size_t size_k;
 
-        const size_t slm_tile_size = 32;
+        const size_t slm_tile_size_n = 32;
+        const size_t slm_tile_size_k = 32;
         const size_t simd_size = 8;
         const size_t pack_size = 4;
-        const size_t max_slm_preloading_size = 256;
+        const size_t output_block_size = 4;
+        const size_t max_slm_preloading_size = 128;
         size_t slm_decimation_factor = 2;
     };
 

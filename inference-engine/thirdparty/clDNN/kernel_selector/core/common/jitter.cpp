@@ -1718,6 +1718,16 @@ std::string FusedOpsCodeGenerator::GetJitLoad(const FusedOpsConfiguration& conf,
 
     bool safe_load = conf.boundary_check == FusedOpsConfiguration::BoundaryCheck::ENABLED;
 
+    bool simple_layout = desc.output_tensor.GetLayout() == DataLayout::bf || desc.output_tensor.GetLayout() == DataLayout::fb ||
+                         desc.output_tensor.GetLayout() == DataLayout::bfyx || desc.output_tensor.GetLayout() == DataLayout::yxfb ||
+                         desc.output_tensor.GetLayout() == DataLayout::byxf || desc.output_tensor.GetLayout() == DataLayout::fyxb ||
+                         desc.output_tensor.GetLayout() == DataLayout::bfxy || desc.output_tensor.GetLayout() == DataLayout::bfzyx ||
+                         desc.output_tensor.GetLayout() == DataLayout::bfwzyx;
+
+    bool per_channel_fusing = desc.GetType() == KernelType::SCALE || desc.GetType() == KernelType::QUANTIZE;
+
+    bool simple_reading = simple_layout && per_channel_fusing;
+
     std::string index_func_call_vec = reuse_index ? reused_idx : GetIdx(input_id, idx_desc{idx, desc.tensors[input_id]}, safe_load);
     std::string index_func_call = reuse_index ? reused_idx : GetIdx(input_id, idx_desc{idx, desc.tensors[input_id]}, safe_load);
     if (conf.index_type == FusedOpsConfiguration::IndexType::LINEAR_OFFSET) {
@@ -1734,7 +1744,7 @@ std::string FusedOpsCodeGenerator::GetJitLoad(const FusedOpsConfiguration& conf,
         // 1. Boundary checks for safe load
         // 2. If in given configuration data can't be loaded by a simple UNIT_BLOCK_READx call or load from casted ptr,
         //    we can gather the data to vector
-        if (conf.load_type == FusedOpsConfiguration::LoadType::LT_ALIGNED_READ) {
+        if (conf.load_type == FusedOpsConfiguration::LoadType::LT_ALIGNED_READ && !simple_reading) {
             std::string vs = vec_size > 1 ? std::to_string(vec_size)  : "";
             std::string block_read;
 

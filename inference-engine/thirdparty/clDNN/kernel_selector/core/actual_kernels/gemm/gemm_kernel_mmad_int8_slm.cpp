@@ -54,15 +54,24 @@ JitConstants GemmKernelMMADslmInt8::GetJitConstants(const gemm_params& params) c
     jit.Merge(MakeTypeJitConstants(Datatype::F32, "ACTIVATION"));
     jit.Merge(MakeTypeJitConstants(params.inputs[0].GetDType() == Datatype::INT8 ? Datatype::INT32 : Datatype::UINT32, "PACKED_INPUT0"));
     jit.Merge(MakeTypeJitConstants(params.inputs[1].GetDType() == Datatype::INT8 ? Datatype::INT32 : Datatype::UINT32, "PACKED_INPUT1"));
-    jit.AddConstant(MakeJitConstant("SLM_TILE_SIZE", td.slm_tile_size));
+    jit.AddConstant(MakeJitConstant("SLM_TILE_SIZE_N", td.slm_tile_size_n));
+    jit.AddConstant(MakeJitConstant("SLM_TILE_SIZE_K", td.slm_tile_size_k));
+    jit.AddConstant(MakeJitConstant("OUTPUT_BLOCK_SIZE", td.output_block_size));
     jit.AddConstant(MakeJitConstant("SLM_DECIMATION_FACTOR", td.slm_decimation_factor));
     if (td.size_k <= td.max_slm_preloading_size) jit.AddConstant(MakeJitConstant("PRELOADING_SLM", 1));
 
     if (!params.fused_ops.empty()) {
         auto input_dt = GetActivationType(params);
-        FusedOpsConfiguration conf = { "", {"b", "f", "output_y", "output_x"}, "dequantized", input_dt, 1 };
-        conf.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
-        jit.Merge(MakeFusedOpsJitConstants(params, { conf }));
+        FusedOpsConfiguration conf_vec = {  "_VEC",
+                                            { "b", "f", "output_y", "output_x" },
+                                            "dequantized",
+                                            input_dt,
+                                            td.output_block_size,
+                                            LoadType::LT_ALIGNED_READ,
+                                            BoundaryCheck::DISABLED };
+        conf_vec.SetLoopAxes({ Tensor::DataChannelName::Y }, true);
+        conf_vec.SetVectorAxis(Tensor::DataChannelName::X);
+        jit.Merge(MakeFusedOpsJitConstants(params, { conf_vec }));
     }
 
     return jit;
@@ -72,13 +81,16 @@ GemmKernelBase::DispatchData GemmKernelMMADslmInt8::SetDefault(const gemm_params
     const auto& output = params.output;
     auto total_batches = output.LogicalSize() / (output.X().v * output.Y().v);
 
-    DispatchData dispatchData;
+    DispatchData kd;
     GemmTuningData td = SetTuningParams(params);
 
-    dispatchData.gws = { td.size_n / td.pack_size, output.Y().v / td.simd_size, total_batches };
-    dispatchData.lws = { td.slm_tile_size / td.pack_size, td.slm_tile_size / td.simd_size, 1 };
+    std::vector<size_t> global = { td.size_n / td.output_block_size, output.Y().v / td.simd_size, total_batches };
+    std::vector<size_t> local = { td.slm_tile_size_n / td.output_block_size, td.slm_tile_size_k / td.simd_size, 1 };
 
-    return dispatchData;
+    kd.gws = { global[0], global[1], global[2] };
+    kd.lws = { local[0], local[1], local[2] };
+
+    return kd;
 }
 
 GemmKernelMMADslmInt8::GemmTuningData GemmKernelMMADslmInt8::InitGemmTuningData(const gemm_params& params) const {
@@ -96,15 +108,15 @@ inline size_t GemmKernelMMADslmInt8::GetMmadOperationsNumber(const GemmTuningDat
 }
 
 inline bool GemmKernelMMADslmInt8::HasLeftovers(const GemmTuningData& tuning_data) const {
-    return tuning_data.size_m % tuning_data.slm_tile_size || tuning_data.size_n % tuning_data.slm_tile_size ||
-           tuning_data.size_k % (tuning_data.slm_tile_size * tuning_data.slm_decimation_factor);
+    return tuning_data.size_m % tuning_data.simd_size || tuning_data.size_n % tuning_data.slm_tile_size_n ||
+           tuning_data.size_k % (tuning_data.slm_tile_size_k * tuning_data.slm_decimation_factor);
 }
 
 GemmKernelMMADslmInt8::GemmTuningData GemmKernelMMADslmInt8::SetTuningParams(const gemm_params& params) const {
     GemmTuningData tuning_data = InitGemmTuningData(params);
 
     tuning_data.slm_decimation_factor = tuning_data.size_k <= tuning_data.max_slm_preloading_size ?
-                                        tuning_data.size_k / tuning_data.slm_tile_size : 2;
+                                        tuning_data.size_k / tuning_data.slm_tile_size_k : 2;
     return tuning_data;
 }
 
@@ -115,7 +127,7 @@ KernelsData GemmKernelMMADslmInt8::GetKernelsData(const Params& params, const op
 
     const auto& prim_params = static_cast<const gemm_params&>(params);
 
-    auto dispatchData = GemmKernelMMADslmInt8::SetDefault(prim_params);
+    auto run_info = GemmKernelMMADslmInt8::SetDefault(prim_params);
     KernelData k_data = KernelData::Default<gemm_params>(params);
 
     auto cldnn_jit = GetJitConstants(prim_params);
@@ -124,7 +136,7 @@ KernelsData GemmKernelMMADslmInt8::GetKernelsData(const Params& params, const op
 
     auto& kernel = k_data.kernels[0];
     FillCLKernelData(kernel,
-                     dispatchData,
+                     run_info,
                      params.engineInfo,
                      kernelName,
                      jit,
@@ -138,7 +150,8 @@ KernelsData GemmKernelMMADslmInt8::GetKernelsData(const Params& params, const op
     GemmTuningData tuning_data = InitGemmTuningData(prim_params);
     auto mmad_operations_number = GetMmadOperationsNumber(tuning_data);
 
-    if ((mmad_operations_number >= 1024 * 1024 * 1024) || (tuning_data.size_m == 384 && tuning_data.size_k == 384 && tuning_data.size_n == 64))
+    if ((tuning_data.size_m == 384 && tuning_data.size_k == 384 && tuning_data.size_n == 64) ||
+        (tuning_data.size_m == 384 && tuning_data.size_k == 64 && tuning_data.size_n == 384))
         k_data.estimatedTime = FORCE_PRIORITY_2;
     else if (mmad_operations_number <= 65536 || tuning_data.size_k <= 64)
         k_data.estimatedTime = DONT_USE_IF_HAVE_SOMETHING_ELSE;
