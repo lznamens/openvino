@@ -378,6 +378,7 @@ struct EngineInfo {
     bool bIMMADSupport = false;
     bool bOptHintsSupport = false;
     bool bLocalBlockIOSupport = false;
+    bool deviceTypeIsDiscreteGPU = false;
     uint32_t computeUnitsCount = 0;
     uint64_t maxWorkGroupSize = 0;
     uint64_t maxLocalMemSize = 0;
