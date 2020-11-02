@@ -153,7 +153,7 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
         }
     }
 
-#define DEBUG_BLOCK_PARAMS_RATIO
+// #define DEBUG_BLOCK_PARAMS_RATIO
 
 #ifdef DEBUG_BLOCK_PARAMS_RATIO
     float occupancy = EstimateOccupancy(params, BlockParams{ block_width, block_height, block_depth, block_features,
@@ -171,7 +171,12 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
     printf("output params: %d %d %d %d %d %d %d %d\n\n\n", (int)block_width, (int)block_height, (int)block_depth, (int)block_features,
            (int)in_block_width, (int)in_block_height, (int)in_block_depth, (int)feature_slm_split);
 #endif // DEBUG_BLOCK_PARAMS_RATIO
+    /*const auto& output = params.output;
 
+    // densenet-161
+    if (output.X().v == 56 && output.Y().v == 56 && output.Z().v == 1 && output.Feature().v == 192)
+        return BlockParams{ 14, 1, 1, 32, 14, 1, 1, 1 };
+    else*/
     return BlockParams{ block_width, block_height, block_depth, block_features, in_block_width, in_block_height, in_block_depth, feature_slm_split };
 }
 
@@ -180,11 +185,12 @@ float Convolution_kernel_b_fs_zyx_fsv16_imad::EstimateBlockParamsRatio(const con
     size_t max_compute_units_per_device = params.engineInfo.computeUnitsCount;
     size_t max_threads_per_device = max_compute_units_per_device * max_threads_per_compute_unit;
     bool increase_max_reg_pressure = static_cast<float>(params.output.LogicalSize() / max_threads_per_device) >= 595.f;
+    bool double_increase_max_reg_pressure = static_cast<float>(params.output.LogicalSize() / max_threads_per_device) >= 595.f * 2.f;
 
-    float max_reg_pressure = increase_max_reg_pressure ? 0.75f : 0.7f;
+    float max_reg_pressure = double_increase_max_reg_pressure ? 0.785f : increase_max_reg_pressure ? 0.75f : 0.7f;
+
     constexpr float max_slm_usage = 1.f;
     constexpr float max_occupancy = 2.f;
-    //constexpr float min_occupancy = 1.f;
     float reduce_occupancy = 0.f;
 
     float occupancy = EstimateOccupancy(params, block);
@@ -197,7 +203,7 @@ float Convolution_kernel_b_fs_zyx_fsv16_imad::EstimateBlockParamsRatio(const con
     float block_params_ratio = logf(occupancy) + slm_usage + reg_pressure - reduce_occupancy;
 
     // Check all restrictions
-    bool bad_block_params = reg_pressure > max_reg_pressure || slm_usage > max_slm_usage/* || occupancy < min_occupancy*/;
+    bool bad_block_params = reg_pressure > max_reg_pressure || slm_usage > max_slm_usage;
 
     return bad_block_params ? -10.f : block_params_ratio;
 }
