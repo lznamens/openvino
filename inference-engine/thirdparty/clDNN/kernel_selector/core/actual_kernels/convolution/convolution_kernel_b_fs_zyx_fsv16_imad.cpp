@@ -102,7 +102,15 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
                 break;
             }
         }
-        for (size_t split = 1; split <= params.engineInfo.maxWorkGroupSize / simd; ++split) {
+        constexpr size_t max_threads_per_compute_unit = 7;
+        size_t max_compute_units_per_device = params.engineInfo.computeUnitsCount;
+        size_t max_threads_per_device = max_compute_units_per_device * max_threads_per_compute_unit;
+        size_t max_slm_split = static_cast<float>(params.output.LogicalSize() / max_threads_per_device) >= 0.f &&
+                               static_cast<float>(params.output.LogicalSize() / max_threads_per_device) <= 100.f ?
+                               params.engineInfo.maxWorkGroupSize / simd : 1;
+
+                               //size_t max_slm_split = 1;
+        for (size_t split = 1; split <= max_slm_split; ++split) {
             for (size_t temp_block_features = simd; temp_block_features <= simd * 2; temp_block_features += simd) {
                 for (size_t d = 1; d < 16; ++d) {
                     if (params.output.Z().v % d != 0)
@@ -192,6 +200,8 @@ float Convolution_kernel_b_fs_zyx_fsv16_imad::EstimateBlockParamsRatio(const con
     constexpr float max_slm_usage = 1.f;
     constexpr float max_occupancy = 2.f;
     float reduce_occupancy = 0.f;
+    float increase_feature_block_factor = static_cast<float>(params.output.LogicalSize() / max_threads_per_device) >= 2500.f &&
+                                          block.output_block_features == 32 ? 0.5f : 0.f;
 
     float occupancy = EstimateOccupancy(params, block);
     float slm_usage = EstimateSLMUsage(params, block);
@@ -200,7 +210,11 @@ float Convolution_kernel_b_fs_zyx_fsv16_imad::EstimateBlockParamsRatio(const con
     if (occupancy > max_occupancy) { reduce_occupancy = log10f(occupancy - max_occupancy); occupancy = max_occupancy; }
 
     // Estimate current block_params_ratio
-    float block_params_ratio = logf(occupancy) + slm_usage + reg_pressure - reduce_occupancy;
+    float block_params_ratio = logf(occupancy) +
+                               increase_feature_block_factor + 
+                               slm_usage +
+                               reg_pressure -
+                               reduce_occupancy;
 
     // Check all restrictions
     bool bad_block_params = reg_pressure > max_reg_pressure || slm_usage > max_slm_usage;
@@ -245,7 +259,7 @@ float Convolution_kernel_b_fs_zyx_fsv16_imad::EstimateOccupancy(const convolutio
     size_t blocks_h = CeilDiv(params.output.Y().v, block.output_block_height);
     size_t blocks_d = CeilDiv(params.output.Z().v, block.output_block_depth);
     size_t blocks_f = CeilDiv(params.weights.OFM().v, block.output_block_features) * params.groups * block.feature_slm_split;
-    size_t block_b = params.output.Batch().v;
+    size_t block_b = params.output.Batch().v; 
 
     auto threads = blocks_w * blocks_h * blocks_d * blocks_f * block_b;
     constexpr size_t max_threads_per_cu = 7;
@@ -281,7 +295,7 @@ float Convolution_kernel_b_fs_zyx_fsv16_imad::EstimateSLMUsage(const convolution
     size_t max_sub_slices_per_device = params.engineInfo.computeUnitsCount / max_compute_units_per_sub_slice;
     size_t max_work_groups_per_device = max_sub_slices_per_device * max_work_groups_per_sub_slice;
     if (work_groups_number > max_work_groups_per_device * 100)
-        return 0.f;
+         return 0.f;
 
     size_t threads_per_work_group = block.feature_slm_split;
     size_t threads_per_sub_slice = max_threads_per_compute_unit * max_compute_units_per_sub_slice;
