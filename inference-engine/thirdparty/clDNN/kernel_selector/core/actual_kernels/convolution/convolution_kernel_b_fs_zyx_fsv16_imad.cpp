@@ -105,7 +105,9 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
         constexpr size_t max_threads_per_compute_unit = 7;
         size_t max_compute_units_per_device = params.engineInfo.computeUnitsCount;
         size_t max_threads_per_device = max_compute_units_per_device * max_threads_per_compute_unit;
-        size_t max_slm_split = static_cast<float>(params.output.LogicalSize() / max_threads_per_device) >= 0.f &&
+        size_t max_slm_split = params.engineInfo.deviceTypeIsDiscreteGPU && params.engineInfo.bIMADSupport ?
+                               params.engineInfo.maxWorkGroupSize / simd :
+                               static_cast<float>(params.output.LogicalSize() / max_threads_per_device) >= 0.f &&
                                static_cast<float>(params.output.LogicalSize() / max_threads_per_device) <= 100.f ?
                                params.engineInfo.maxWorkGroupSize / simd : 1;
 
@@ -120,7 +122,7 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
                             continue;
 
                         bool c_ifm_mul = CeilDiv(params.weights.IFM().v, fsv) % split == 0;
-                        bool c_mul_f = params.weights.OFM().v % temp_block_features == 0;
+                        bool c_mul_f = temp_block_features == simd ? true : params.weights.OFM().v % temp_block_features == 0;
 
                         size_t temp_block_height = 1;
                         size_t temp_block_depth = 1;
@@ -137,7 +139,8 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
                         test_block_params = BlockParams{ temp_block_width, temp_block_height, temp_block_depth, temp_block_features,
                                                          temp_in_block_width, temp_in_block_height, temp_in_block_depth, split };
                         auto block_params_ratio = EstimateBlockParamsRatio(params, test_block_params);
-
+                        //params.weights.IFM().v, fsv) % split
+                        // if (params.output.LogicalSize() == 720000) printf("ratio cur = %f ratio best = %f %d %d IFM = %d split = %d cDiv = %d Wei = %d t_b_f = %d\n", block_params_ratio, best_block_params_ratio, (int)c_ifm_mul, (int)c_mul_f, (int)params.weights.IFM().v, (int)split, (int)(CeilDiv(params.weights.IFM().v, fsv) % split), (int)params.weights.OFM().v, (int)temp_block_features);
                         // Try to increase block_params_ratio
                         if (c_ifm_mul && c_mul_f && block_params_ratio > best_block_params_ratio) {
                             best_block_params_ratio = block_params_ratio;
@@ -161,7 +164,7 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
         }
     }
 
-// #define DEBUG_BLOCK_PARAMS_RATIO
+//#define DEBUG_BLOCK_PARAMS_RATIO
 
 #ifdef DEBUG_BLOCK_PARAMS_RATIO
     float occupancy = EstimateOccupancy(params, BlockParams{ block_width, block_height, block_depth, block_features,
@@ -179,12 +182,7 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
     printf("output params: %d %d %d %d %d %d %d %d\n\n\n", (int)block_width, (int)block_height, (int)block_depth, (int)block_features,
            (int)in_block_width, (int)in_block_height, (int)in_block_depth, (int)feature_slm_split);
 #endif // DEBUG_BLOCK_PARAMS_RATIO
-    /*const auto& output = params.output;
 
-    // densenet-161
-    if (output.X().v == 56 && output.Y().v == 56 && output.Z().v == 1 && output.Feature().v == 192)
-        return BlockParams{ 14, 1, 1, 32, 14, 1, 1, 1 };
-    else*/
     return BlockParams{ block_width, block_height, block_depth, block_features, in_block_width, in_block_height, in_block_depth, feature_slm_split };
 }
 
@@ -192,32 +190,44 @@ float Convolution_kernel_b_fs_zyx_fsv16_imad::EstimateBlockParamsRatio(const con
     constexpr size_t max_threads_per_compute_unit = 7;
     size_t max_compute_units_per_device = params.engineInfo.computeUnitsCount;
     size_t max_threads_per_device = max_compute_units_per_device * max_threads_per_compute_unit;
-    bool increase_max_reg_pressure = static_cast<float>(params.output.LogicalSize() / max_threads_per_device) >= 595.f;
-    bool double_increase_max_reg_pressure = static_cast<float>(params.output.LogicalSize() / max_threads_per_device) >= 595.f * 2.f;
-
+    float occupancy_by_logic_size = static_cast<float>(params.output.LogicalSize() / max_threads_per_device);
+    bool increase_max_reg_pressure = occupancy_by_logic_size >= 595.f;
+    bool double_increase_max_reg_pressure = occupancy_by_logic_size >= 595.f * 2.f;
     float max_reg_pressure = double_increase_max_reg_pressure ? 0.785f : increase_max_reg_pressure ? 0.75f : 0.7f;
 
-    constexpr float max_slm_usage = 1.f;
     constexpr float max_occupancy = 2.f;
-    float reduce_occupancy = 0.f;
-    float increase_feature_block_factor = static_cast<float>(params.output.LogicalSize() / max_threads_per_device) >= 2500.f &&
-                                          block.output_block_features == 32 ? 0.5f : 0.f;
+    constexpr float max_slm_usage = 1.f;
 
     float occupancy = EstimateOccupancy(params, block);
     float slm_usage = EstimateSLMUsage(params, block);
     float reg_pressure = EstimateRegPressure(params, block);
 
+    float feature_block_32 = static_cast<float>(block.output_block_features == 32);
+    float fb32_factor = params.engineInfo.deviceTypeIsDiscreteGPU && params.engineInfo.bIMADSupport ? 0.f :
+                        occupancy_by_logic_size >= 2500.f ? 0.5f : -5.f;
+    //if (params.output.LogicalSize() == 720000) printf("reg_pressure for 720000 = %f\n", reg_pressure);
+    float reg_pressure_factor = atanf(occupancy) / 3.14159f;
+    float slm_usage_factor = atanf(occupancy) / 3.14159f;
+
+    //printf("occupancy = %f reg_pressure_factor = %f fb32_factor = %f slm_usage_factor = %f\n ", occupancy, reg_pressure_factor, fb32_factor, slm_usage_factor);
+    float reduce_occupancy = 0.0f;
     if (occupancy > max_occupancy) { reduce_occupancy = log10f(occupancy - max_occupancy); occupancy = max_occupancy; }
 
+    size_t cur_coeff = (block.output_block_features == 16 ? 2 : 1) * block.feature_slm_split;
+    size_t max_coeff = 2 * params.engineInfo.maxWorkGroupSize / simd;
+    float coeff = static_cast<float>(max_coeff) / static_cast<float>(cur_coeff);
+
+    auto c_ifm_mul = CeilDiv(params.weights.IFM().v, fsv) % (params.engineInfo.maxWorkGroupSize / simd) == 0;
+    auto can_increase_occupancy = (occupancy * coeff >= 1.0f) && c_ifm_mul;
+
     // Estimate current block_params_ratio
-    float block_params_ratio = logf(occupancy) +
-                               increase_feature_block_factor + 
-                               slm_usage +
-                               reg_pressure -
-                               reduce_occupancy;
+    float block_params_ratio = occupancy +
+                               feature_block_32 * fb32_factor +
+                               slm_usage * slm_usage_factor +
+                               reg_pressure * reg_pressure_factor - reduce_occupancy;
 
     // Check all restrictions
-    bool bad_block_params = reg_pressure > max_reg_pressure || slm_usage > max_slm_usage;
+    bool bad_block_params = reg_pressure > max_reg_pressure || slm_usage > max_slm_usage || (occupancy < 1.0f && can_increase_occupancy);
 
     return bad_block_params ? -10.f : block_params_ratio;
 }
@@ -295,7 +305,7 @@ float Convolution_kernel_b_fs_zyx_fsv16_imad::EstimateSLMUsage(const convolution
     size_t max_sub_slices_per_device = params.engineInfo.computeUnitsCount / max_compute_units_per_sub_slice;
     size_t max_work_groups_per_device = max_sub_slices_per_device * max_work_groups_per_sub_slice;
     if (work_groups_number > max_work_groups_per_device * 100)
-         return 0.f;
+        return 0.f;
 
     size_t threads_per_work_group = block.feature_slm_split;
     size_t threads_per_sub_slice = max_threads_per_compute_unit * max_compute_units_per_sub_slice;
