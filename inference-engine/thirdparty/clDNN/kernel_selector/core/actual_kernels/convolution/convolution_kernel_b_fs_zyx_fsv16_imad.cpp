@@ -102,16 +102,16 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
                 break;
             }
         }
-        constexpr size_t max_threads_per_compute_unit = 7;
+       /* constexpr size_t max_threads_per_compute_unit = 7;
         size_t max_compute_units_per_device = params.engineInfo.computeUnitsCount;
         size_t max_threads_per_device = max_compute_units_per_device * max_threads_per_compute_unit;
         size_t max_slm_split = params.engineInfo.deviceTypeIsDiscreteGPU && params.engineInfo.bIMADSupport ?
                                params.engineInfo.maxWorkGroupSize / simd :
                                static_cast<float>(params.output.LogicalSize() / max_threads_per_device) >= 0.f &&
                                static_cast<float>(params.output.LogicalSize() / max_threads_per_device) <= 100.f ?
-                               params.engineInfo.maxWorkGroupSize / simd : 1;
+                               params.engineInfo.maxWorkGroupSize / simd : 1;*/
 
-                               //size_t max_slm_split = 1;
+                               size_t max_slm_split = params.engineInfo.maxWorkGroupSize / simd;
         for (size_t split = 1; split <= max_slm_split; ++split) {
             for (size_t temp_block_features = simd; temp_block_features <= simd * 2; temp_block_features += simd) {
                 for (size_t d = 1; d < 16; ++d) {
