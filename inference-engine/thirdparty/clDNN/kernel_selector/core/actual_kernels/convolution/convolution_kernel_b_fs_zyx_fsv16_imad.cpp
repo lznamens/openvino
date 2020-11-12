@@ -97,13 +97,6 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
     auto test_block_params = BlockParams{ block_width, 1, 1, simd, in_block_width, 1, 1, 1 };
     auto best_block_params_ratio = EstimateBlockParamsRatio(params, test_block_params);
 
-    constexpr size_t max_threads_per_compute_unit = 7;
-        size_t max_compute_units_per_device = params.engineInfo.computeUnitsCount;
-        size_t max_threads_per_device = max_compute_units_per_device * max_threads_per_compute_unit;
-        size_t max_slm_split = static_cast<float>(params.output.LogicalSize() / max_threads_per_device) >= 0.f &&
-                               static_cast<float>(params.output.LogicalSize() / max_threads_per_device) <= 100.f ?
-                               params.engineInfo.maxWorkGroupSize / simd : 1;
-
     // Check ratio in cycle for all available block params
     for (size_t w = 0; w < 2; w++) {
         size_t temp_block_width = block_width;
@@ -118,7 +111,7 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
             }
         }
 
-        for (size_t split = 1; split <= max_slm_split; split *= 2) {
+        for (size_t split = 1; split <= params.engineInfo.maxWorkGroupSize / simd; split *= 2) {
             for (size_t temp_block_features = simd; temp_block_features <= simd * 2; temp_block_features += simd) {
                 for (size_t d = 1; d < 16; ++d) {
                     if (params.output.Z().v % d)
