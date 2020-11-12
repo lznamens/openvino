@@ -97,6 +97,13 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
     auto test_block_params = BlockParams{ block_width, 1, 1, simd, in_block_width, 1, 1, 1 };
     auto best_block_params_ratio = EstimateBlockParamsRatio(params, test_block_params);
 
+    constexpr size_t max_threads_per_compute_unit = 7;
+        size_t max_compute_units_per_device = params.engineInfo.computeUnitsCount;
+        size_t max_threads_per_device = max_compute_units_per_device * max_threads_per_compute_unit;
+        size_t max_slm_split = static_cast<float>(params.output.LogicalSize() / max_threads_per_device) >= 0.f &&
+                               static_cast<float>(params.output.LogicalSize() / max_threads_per_device) <= 100.f ?
+                               params.engineInfo.maxWorkGroupSize / simd : 1;
+
     // Check ratio in cycle for all available block params
     for (size_t w = 0; w < 2; w++) {
         size_t temp_block_width = block_width;
@@ -111,7 +118,7 @@ Convolution_kernel_b_fs_zyx_fsv16_imad::GetBlockParams(const convolution_params&
             }
         }
 
-        for (size_t split = 1; split <= params.engineInfo.maxWorkGroupSize / simd; ++split) {
+        for (size_t split = 1; split <= max_slm_split; split *= 2) {
             for (size_t temp_block_features = simd; temp_block_features <= simd * 2; temp_block_features += simd) {
                 for (size_t d = 1; d < 16; ++d) {
                     if (params.output.Z().v % d)
@@ -181,17 +188,10 @@ float Convolution_kernel_b_fs_zyx_fsv16_imad::EstimateBlockParamsRatio(const con
     float reg_pressure = EstimateRegPressure(params, block);
 
     float feature_block_32 = static_cast<float>(block.output_block_features == 32);
-    float fb32_factor = params.engineInfo.deviceTypeIsDiscreteGPU && params.engineInfo.bIMADSupport ? 0.f :
-                        occupancy_by_logic_size >= 2500.f ? 0.5f : -5.f;
+    float fb32_factor = occupancy_by_logic_size >= 2500.f ? 0.5f : -5.f;
 
     float reg_pressure_factor = atanf(occupancy) / 3.14159f;
     float slm_usage_factor = atanf(occupancy) / 3.14159f;
-
-    float reduce_occupancy = 0.0f;
-    if (occupancy > max_occupancy) {
-        reduce_occupancy = log10f(occupancy - max_occupancy);
-        occupancy = max_occupancy;
-    }
 
     size_t cur_increase_occupancy_coeff = (block.output_block_features == fsv ? 2 : 1) * block.feature_slm_split;
     size_t max_increase_occupancy_coeff = 2 * params.engineInfo.maxWorkGroupSize / simd;
@@ -199,6 +199,12 @@ float Convolution_kernel_b_fs_zyx_fsv16_imad::EstimateBlockParamsRatio(const con
 
     auto c_ifm_mul = CeilDiv(params.weights.IFM().v, fsv) % (params.engineInfo.maxWorkGroupSize / simd) == 0;
     auto can_increase_occupancy = (occupancy * can_increase_occupancy_coeff >= 1.0f) && c_ifm_mul;
+
+    float reduce_occupancy = 0.0f;
+    if (occupancy > max_occupancy) {
+        reduce_occupancy = log10f(occupancy - max_occupancy);
+        occupancy = max_occupancy;
+    }
 
     // Estimate current block_params_ratio
     float block_params_ratio = occupancy +
