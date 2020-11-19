@@ -28,10 +28,11 @@ public:
         size_t size_k;
 
         size_t simd_size = 16;
-        size_t output_block_size = 4;
+        size_t output_block_size_x = 4;
+        size_t output_block_size_y = 1;
         const size_t pack_size = 4;
 
-        bool big_block_leftovers = false;
+        // bool big_block_leftovers = false;
     };
 
     GemmKernelMMADint8opt() : GemmKernelBase("gemm_mmad_int8_opt") {}
@@ -52,6 +53,6 @@ protected:
     GemmTuningData InitGemmTuningData(const gemm_params& params) const;
     GemmTuningData SetTuningParams(const gemm_params& params) const;
     size_t GetMmadOperationsNumber(const GemmTuningData& tuning_data) const;
-    bool HasLeftovers(bool no_transposition, const GemmTuningData& tuning_data, int tile_size) const;
+    bool GemmKernelMMADint8opt::HasLeftovers(const GemmTuningData& tuning_data) const;
 };
 }  // namespace kernel_selector

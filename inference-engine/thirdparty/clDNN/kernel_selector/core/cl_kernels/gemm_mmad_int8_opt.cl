@@ -19,37 +19,56 @@
 
 #define AS_TYPE(type, val)          CAT(as_, type)(val)
 #define ACCUMULATOR_TYPE_VEC        CAT(ACCUMULATOR_TYPE, SUB_GROUP_SIZE)
-#define ACTIVATION_TYPE_VEC         CAT(ACTIVATION_TYPE, OUTPUT_BLOCK_SIZE)
+#define ACTIVATION_TYPE_VEC         CAT(ACTIVATION_TYPE, OUTPUT_BLOCK_SIZE_X)
 #define TO_ACTIVATION_TYPE_VEC(val) CAT(convert_, ACTIVATION_TYPE_VEC)(val)
-#define INPUT2_TYPE_VEC             CAT(INPUT2_TYPE, OUTPUT_BLOCK_SIZE)
+
+#if OUTPUT_X_BLOCK_SIZE_X > 1
+#   define INPUT2_TYPE_VEC          CAT(INPUT2_TYPE, OUTPUT_BLOCK_SIZE_X)
+#else
+#   define INPUT2_TYPE_VEC          INPUT2_TYPE
+#endif
 #define AS_INPUT2_TYPE_VEC          CAT(as_, INPUT2_TYPE_VEC)
+
 #define PACKED_INPUT0_TYPE_VEC      CAT(PACKED_INPUT0_TYPE, SUB_GROUP_SIZE)
 #define PACKED_INPUT1_TYPE_VEC      CAT(PACKED_INPUT1_TYPE, SUB_GROUP_SIZE)
-#define INPUT1_TYPE_VEC             CAT(INPUT1_TYPE, OUTPUT_BLOCK_SIZE)
+#define INPUT1_TYPE_VEC             CAT(INPUT1_TYPE, OUTPUT_BLOCK_SIZE_X)
 #define BLOCK_READ_INT(ptr)         intel_sub_group_block_read((const __global uint*)(ptr))
 #define BLOCK_READ_CHAR(ptr)        BLOCK_READ_UC_4((__global uchar*)(ptr))
-#define BLOCK_SHUFFLE               intel_sub_group_shuffle
+
+#define BLOCK_READ_US_1(ptr)        intel_sub_group_block_read_us((__global ushort*)(ptr))
+#define BLOCK_READ_US_2(ptr)        intel_sub_group_block_read_us2((__global ushort*)(ptr))
+#define BLOCK_READ_US_4(ptr)        intel_sub_group_block_read_us4((__global ushort*)(ptr))
+
+#define BLOCK_READ_UI_1(ptr)        intel_sub_group_block_read((__global uint*)(ptr)) 
+#define BLOCK_READ_UI_2(ptr)        intel_sub_group_block_read2((__global uint*)(ptr))
+#define BLOCK_READ_UI_4(ptr)        intel_sub_group_block_read4((__global uint*)(ptr))
+
+#define BLOCK_READ_UC_N(ptr)        CAT(BLOCK_READ_UC_, OUTPUT_BLOCK_SIZE_X)
+#define BLOCK_READ_US_N(ptr)        CAT(BLOCK_READ_US_, OUTPUT_BLOCK_SIZE_X)
+#define BLOCK_READ_UI_N(ptr)        CAT(BLOCK_READ_UI_, OUTPUT_BLOCK_SIZE_X)
 
 #ifdef INPUT2_TYPE
 #if INPUT2_TYPE_SIZE == 1
-#   define BLOCK_READ_INPUT2(ptr)   AS_INPUT2_TYPE_VEC(BLOCK_READ_UC_4((__global uchar*)(ptr)))
+#   define BLOCK_READ_INPUT2(ptr)   AS_INPUT2_TYPE_VEC(BLOCK_READ_UC_N((__global uchar*)(ptr)))
 #elif INPUT2_TYPE_SIZE == 2
-#   define BLOCK_READ_INPUT2(ptr)   AS_INPUT2_TYPE_VEC(intel_sub_group_block_read_us4((__global ushort*)(ptr)))
+#   define BLOCK_READ_INPUT2(ptr)   AS_INPUT2_TYPE_VEC(BLOCK_READ_US_N((__global ushort*)(ptr)))
 #elif INPUT2_TYPE_SIZE == 4
-#   define BLOCK_READ_INPUT2(ptr)   AS_INPUT2_TYPE_VEC(intel_sub_group_block_read4((__global uint*)(ptr)))
+#   define BLOCK_READ_INPUT2(ptr)   AS_INPUT2_TYPE_VEC(BLOCK_READ_UI_N((__global uint*)(ptr)))
 #else
-#   error gemm_mmad_int8.cl : unsupported input2 type
+#   error gemm_mmad_int8_opt.cl : unsupported input2 type
 #endif // INPUT2_TYPE_SIZE == 1
 #endif // INPUT2_TYPE
 
 #if OUTPUT_TYPE_SIZE == 1
+#   define BLOCK_WRITE(ptr, offset, val)    BLOCK_WRITE_UC_4((__global uchar*)(ptr) + (offset), as_uchar4(val))
+#   define BLOCK_WRITE(ptr, offset, val)    BLOCK_WRITE_UC_4((__global uchar*)(ptr) + (offset), as_uchar4(val))
 #   define BLOCK_WRITE(ptr, offset, val)    BLOCK_WRITE_UC_4((__global uchar*)(ptr) + (offset), as_uchar4(val))
 #elif OUTPUT_TYPE_SIZE == 2
 #   define BLOCK_WRITE(ptr, offset, val)    intel_sub_group_block_write_us4((__global ushort*)(ptr) + (offset), as_ushort4(val))
 #elif OUTPUT_TYPE_SIZE == 4
 #   define BLOCK_WRITE(ptr, offset, val)    intel_sub_group_block_write4((__global uint*)(ptr) + (offset), as_uint4(val))
 #else
-#   error gemm_mmad_int8.cl : unsupported output type
+#   error gemm_mmad_int8_opt.cl : unsupported output type
 #endif // OUTPUT_TYPE_SIZE == 1
 
 #if SUB_GROUP_SIZE == 8
@@ -62,7 +81,7 @@ inline uint FUNC(get_input0_batch_offset)(uint b, uint f, uint w, uint z) {
 #if INPUT0_SIMPLE
     return GET_DATA_INDEX_6D_SAFE(INPUT0, b, f, w, z, 0, 0);
 #else // INPUT0_SIMPLE
-#   error gemm_mmad_int8.cl : unsupported input 0 format
+#   error gemm_mmad_int8_opt.cl : unsupported input 0 format
 #endif // INPUT0_SIMPLE
 }
 
@@ -70,7 +89,7 @@ inline uint FUNC(get_input1_batch_offset)(uint b, uint f, uint w, uint z) {
 #if INPUT1_SIMPLE
     return GET_DATA_INDEX_6D_SAFE(INPUT1, b, f, w, z, 0, 0);
 #else // INPUT1_SIMPLE
-#   error gemm_mmad_int8.cl : unsupported input 1 format
+#   error gemm_mmad_int8_opt.cl : unsupported input 1 format
 #endif // INPUT1_SIMPLE
 }
 
@@ -79,7 +98,7 @@ inline uint FUNC(get_input2_batch_offset)(uint b, uint f, uint w, uint z) {
 #if INPUT2_SIMPLE
     return GET_DATA_INDEX_6D_SAFE(INPUT2, b, f, w, z, 0, 0);
 #else // INPUT2_SIMPLE
-#   error gemm_mmad_int8.cl : unsupported input 2 format
+#   error gemm_mmad_int8_opt.cl : unsupported input 2 format
 #endif // INPUT2_SIMPLE
 }
 #endif // INPUT2_TYPE
@@ -88,7 +107,7 @@ inline uint FUNC(get_output_batch_offset)(uint b, uint f, uint w, uint z) {
 #if OUTPUT_SIMPLE
     return GET_DATA_INDEX_6D(OUTPUT, b, f, w, z, 0, 0);
 #else // OUTPUT_SIMPLE
-#   error gemm_mmad_int8.cl : unsupported output format
+#   error gemm_mmad_int8_opt.cl : unsupported output format
 #endif // OUTPUT_SIMPLE
 }
 
@@ -137,201 +156,9 @@ KERNEL(gemm_mmad_int8_opt)(
     , FUSED_OPS_DECLS
 #endif // HAS_FUSED_OPS_DECLS
     )
-
-// ***************************************************************************************** //
-// Kernel with leftovers for all sizes of input matrices and all transposition combinations. //
-// ***************************************************************************************** //
-
-#if OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N || OUTPUT_LEFTOVERS_K
 {
     // Indices
-    const uint output_x_tile = (uint)get_global_id(0) / TILE_SIZE_N;
-    const uint output_y_tile = (uint)get_global_id(1);
-
-    uint batch = get_global_id(2);
-    const uint lid = (uint)get_local_id(0);
-
-    const uint z = batch % OUTPUT_SIZE_Z;
-    batch /= OUTPUT_SIZE_Z;
-    const uint w = batch % OUTPUT_SIZE_W;
-    batch /= OUTPUT_SIZE_W;
-    const uint f = batch % OUTPUT_FEATURE_NUM;
-    batch /= OUTPUT_FEATURE_NUM;
-    const uint b = batch % OUTPUT_BATCH_NUM;
-
-    // Batch offsets
-    const uint batch_offset_input0 = FUNC_CALL(get_input0_batch_offset)(b, f, w, z);
-    const uint batch_offset_input1 = FUNC_CALL(get_input1_batch_offset)(b, f, w, z);
-#ifdef INPUT2_TYPE
-    const uint batch_offset_input2 = FUNC_CALL(get_input2_batch_offset)(b, f, w, z);
-#endif // INPUT2_TYPE
-    const uint batch_offset_output = FUNC_CALL(get_output_batch_offset)(b, f, w, z);
-
-    // Chunks of input matrices
-    PACKED_INPUT0_TYPE_VEC tile_input0;
-    PACKED_INPUT1_TYPE_VEC tile_input1;
-#ifdef INPUT2_TYPE
-    MAKE_VECTOR_TYPE(ACTIVATION_TYPE, SUB_GROUP_SIZE) tile_input2;
-#if OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N
-    for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-        if (output_y_tile * TILE_SIZE_M + i >= OUTPUT_SIZE_Y) continue;
-        if (output_x_tile * TILE_SIZE_N + lid >= OUTPUT_SIZE_X) continue;
-
-        tile_input2[i] = TO_ACTIVATION_TYPE(input2[batch_offset_input2 + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X +
-                                                   output_x_tile * TILE_SIZE_N + lid]);
-    }
-#else // OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N
-    for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-        tile_input2[i] = TO_ACTIVATION_TYPE(input2[batch_offset_input2 + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X +
-                                                   output_x_tile * TILE_SIZE_N + lid]);
-    }
-#endif // OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N
-#endif // INPUT2_TYPE
-
-    // One chunk of the output matrix (C)
-    ACCUMULATOR_TYPE_VEC tile_output = (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO);
-
-#if !TRANSPOSE_INPUT0
-    const uint K_BLOCK_NUM = (INPUT0_SIZE_X - 1) / TILE_SIZE_K + 1;
-    const uint K_SIZE = INPUT0_SIZE_X;
-#else // !TRANSPOSE_INPUT0
-    const uint K_BLOCK_NUM = (INPUT0_SIZE_Y - 1) / TILE_SIZE_K + 1;
-    const uint K_SIZE = INPUT0_SIZE_Y;
-#endif // !TRANSPOSE_INPUT0
-
-    // Loop by "k" tiles
-    for (uint k = 0; k < K_BLOCK_NUM; k++) {
-        MAKE_VECTOR_TYPE(INPUT0_TYPE, PACK_SIZE) temp_input0[SUB_GROUP_SIZE];
-        MAKE_VECTOR_TYPE(INPUT1_TYPE, PACK_SIZE) temp_input1[SUB_GROUP_SIZE];
-
-        for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-            const uint common_input1_offset = FUNC_CALL(get_common_input1_offset)(batch_offset_input1, k, i, output_x_tile, lid);
-
-#if OUTPUT_LEFTOVERS_N || OUTPUT_LEFTOVERS_K
-            const uint cur_n = output_x_tile * TILE_SIZE_N + lid;
-            const uint cur_k = k * TILE_SIZE_K + i * PACK_SIZE;
-
-            temp_input1[i] = 0;
-
-            if (cur_n < OUTPUT_SIZE_X) {
-                if (cur_k + 3 < K_SIZE) {
-                    temp_input1[i].s0 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 0, lid)];
-                    temp_input1[i].s1 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 1, lid)];
-                    temp_input1[i].s2 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 2, lid)];
-                    temp_input1[i].s3 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 3, lid)];
-                } else if (cur_k + 2 < K_SIZE) {
-                    temp_input1[i].s0 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 0, lid)];
-                    temp_input1[i].s1 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 1, lid)];
-                    temp_input1[i].s2 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 2, lid)];
-                } else if (cur_k + 1 < K_SIZE) {
-                    temp_input1[i].s0 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 0, lid)];
-                    temp_input1[i].s1 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 1, lid)];
-                } else if (cur_k < K_SIZE) {
-                    temp_input1[i].s0 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 0, lid)];
-                }
-            }
-#else // OUTPUT_LEFTOVERS_N || OUTPUT_LEFTOVERS_K
-            temp_input1[i].s0 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 0, lid)];
-            temp_input1[i].s1 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 1, lid)];
-            temp_input1[i].s2 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 2, lid)];
-            temp_input1[i].s3 = input1[FUNC_CALL(get_current_input1_offset)(common_input1_offset, 3, lid)];
-#endif // OUTPUT_LEFTOVERS_N || OUTPUT_LEFTOVERS_K
-
-            tile_input1[i] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1[i]);
-        }
-
-        for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-            const uint common_input0_offset = FUNC_CALL(get_common_input0_offset)(batch_offset_input0, k, i, output_y_tile, lid);
-
-#if OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_K
-            const uint cur_m = output_y_tile * TILE_SIZE_M + i;
-            const uint cur_k = k * TILE_SIZE_K + lid * PACK_SIZE;
-
-            temp_input0[i] = 0;
-
-            if (cur_m < OUTPUT_SIZE_Y) {
-                if (cur_k + 3 < K_SIZE) {
-                    temp_input0[i].s0 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 0, lid)];
-                    temp_input0[i].s1 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 1, lid)];
-                    temp_input0[i].s2 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 2, lid)];
-                    temp_input0[i].s3 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 3, lid)];
-                } else if (cur_k + 2 < K_SIZE) {
-                    temp_input0[i].s0 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 0, lid)];
-                    temp_input0[i].s1 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 1, lid)];
-                    temp_input0[i].s2 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 2, lid)];
-                } else if (cur_k + 1 < K_SIZE) {
-                    temp_input0[i].s0 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 0, lid)];
-                    temp_input0[i].s1 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 1, lid)];
-                } else if (cur_k < K_SIZE) {
-                    temp_input0[i].s0 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 0, lid)];
-                }
-            }
-
-            tile_input0[i] = AS_TYPE(PACKED_INPUT0_TYPE, temp_input0[i]);
-#else // OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_K
-
-#if !TRANSPOSE_INPUT0
-            tile_input0[i] = AS_TYPE(PACKED_INPUT0_TYPE, BLOCK_READ_INT(input0 + common_input0_offset));
-#else // !TRANSPOSE_INPUT0
-            temp_input0[i].s0 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 0, lid)];
-            temp_input0[i].s1 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 1, lid)];
-            temp_input0[i].s2 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 2, lid)];
-            temp_input0[i].s3 = input0[FUNC_CALL(get_current_input0_offset)(common_input0_offset, 3, lid)];
-
-            tile_input0[i] = AS_TYPE(PACKED_INPUT0_TYPE, temp_input0[i]);
-#endif // !TRANSPOSE_INPUT0
-
-#endif // OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_K
-        }
-
-        // Calculating one chunk of the matrix C
-        tile_output = MMAD(tile_input0, tile_input1, tile_output);
-    }
-
-#if HAS_FUSED_OPS
-    const uint output_x = (uint)get_global_id(0);
-    uint output_y = output_y_tile * TILE_SIZE_M;
-#if FUSED_OPS_CAN_USE_PRELOAD
-    FUSED_OPS_PRELOAD_SCALAR;
-#endif // FUSED_OPS_CAN_USE_PRELOAD
-#endif // HAS_FUSED_OPS
-
-    for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-#if OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N
-        if (output_y_tile * TILE_SIZE_M + i >= OUTPUT_SIZE_Y) continue;
-        if (output_x_tile * TILE_SIZE_N + lid >= OUTPUT_SIZE_X) continue;
-#endif // OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N
-
-        ACTIVATION_TYPE dequantized = TO_ACTIVATION_TYPE(tile_output[i]);
-        dequantized *= TO_ACTIVATION_TYPE(ALPHA);
-
-#ifdef INPUT2_TYPE
-        dequantized += TO_ACTIVATION_TYPE(BETA) * tile_input2[i];
-#endif // INPUT2_TYPE
-
-#if HAS_FUSED_OPS
-#if FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS_CALC_SCALAR;
-#else // FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS_SCALAR;
-#endif // FUSED_OPS_CAN_USE_PRELOAD
-        OUTPUT_TYPE res = FUSED_OPS_RESULT_SCALAR;
-        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + lid] = res;
-        output_y++;
-#else // HAS_FUSED_OPS
-        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + lid] = dequantized;
-#endif // HAS_FUSED_OPS
-    }
-}
-
-// ******************************************************************* //
-// Optimized kernel without leftovers for different tiling parameters. //
-// ******************************************************************* //
-
-#else // OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N || OUTPUT_LEFTOVERS_K
-{
-    // Indices
-    const uint output_x_tile = (uint)get_global_id(0) * OUTPUT_BLOCK_SIZE / TILE_SIZE_N;
+    const uint output_x_tile = (uint)get_global_id(0) * OUTPUT_BLOCK_SIZE_X / TILE_SIZE_N;
     const uint output_y_tile = (uint)get_global_id(1);
 
     const uint lid = (uint)get_local_id(0);
@@ -355,7 +182,7 @@ KERNEL(gemm_mmad_int8_opt)(
 
 #if !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
     // Register chunks of the output matrix (C)
-    ACCUMULATOR_TYPE_VEC tile_output[OUTPUT_BLOCK_SIZE] = { (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
+    ACCUMULATOR_TYPE_VEC tile_output[OUTPUT_BLOCK_SIZE_X] = { (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
                                                             (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
                                                             (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
                                                             (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO) };
@@ -379,7 +206,7 @@ KERNEL(gemm_mmad_int8_opt)(
         PACKED_INPUT0_TYPE_VEC tile_input0;
 
 #if !TRANSPOSE_INPUT1 && !TRANSPOSE_INPUT0
-        PACKED_INPUT1_TYPE_VEC tile_input1[OUTPUT_BLOCK_SIZE];
+        PACKED_INPUT1_TYPE_VEC tile_input1[OUTPUT_BLOCK_SIZE_X];
         PACKED_INPUT1_TYPE* tile_input1_pnt = (PACKED_INPUT1_TYPE*)tile_input1;
         INPUT1_TYPE_VEC temp_input1[PACK_SIZE];
         INPUT1_TYPE* temp_input1_pnt = (INPUT1_TYPE*)temp_input1;
@@ -393,12 +220,12 @@ KERNEL(gemm_mmad_int8_opt)(
                 temp_input1[j] = AS_TYPE(INPUT1_TYPE_VEC, BLOCK_READ_CHAR(input1 + common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + j * INPUT1_SIZE_X));
             }
 
-            for (uint j = 0; j < OUTPUT_BLOCK_SIZE; j++) {
+            for (uint j = 0; j < OUTPUT_BLOCK_SIZE_X; j++) {
                 INPUT1_TYPE_VEC temp_input1_pack;
                 temp_input1_pack.s0 = temp_input1_pnt[j];
-                temp_input1_pack.s1 = temp_input1_pnt[j + OUTPUT_BLOCK_SIZE];
-                temp_input1_pack.s2 = temp_input1_pnt[j + 2 * OUTPUT_BLOCK_SIZE];
-                temp_input1_pack.s3 = temp_input1_pnt[j + 3 * OUTPUT_BLOCK_SIZE];
+                temp_input1_pack.s1 = temp_input1_pnt[j + OUTPUT_BLOCK_SIZE_X];
+                temp_input1_pack.s2 = temp_input1_pnt[j + 2 * OUTPUT_BLOCK_SIZE_X];
+                temp_input1_pack.s3 = temp_input1_pnt[j + 3 * OUTPUT_BLOCK_SIZE_X];
 
                 tile_input1_pnt[i + j * SUB_GROUP_SIZE] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1_pack);
             }
@@ -493,8 +320,8 @@ KERNEL(gemm_mmad_int8_opt)(
 #endif // !TRANSPOSE_INPUT0
 
 #if !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
-    // We should calculate OUTPUT_BLOCK_SIZE chunks of the matrix C
-        for (uint i = 0; i < OUTPUT_BLOCK_SIZE; i++) {
+    // We should calculate OUTPUT_BLOCK_SIZE_X chunks of the matrix C
+        for (uint i = 0; i < OUTPUT_BLOCK_SIZE_X; i++) {
             tile_output[i] = MMAD(tile_input0, tile_input1[i], tile_output[i]);
         }
 #else // !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
@@ -516,7 +343,7 @@ KERNEL(gemm_mmad_int8_opt)(
 
     for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
         MAKE_VECTOR_TYPE(ACCUMULATOR_TYPE, 4) tile_output_temp;
-        for (uint j = 0; j < OUTPUT_BLOCK_SIZE; j++) {
+        for (uint j = 0; j < OUTPUT_BLOCK_SIZE_X; j++) {
             tile_output_temp[j] = tile_output_pnt[j * SUB_GROUP_SIZE + i];
         }
 
@@ -534,7 +361,7 @@ KERNEL(gemm_mmad_int8_opt)(
         FUSED_OPS_VEC;
 #endif // FUSED_OPS_CAN_USE_PRELOAD
 
-        MAKE_VECTOR_TYPE(OUTPUT_TYPE, OUTPUT_BLOCK_SIZE) res = FUSED_OPS_RESULT_VEC;
+        MAKE_VECTOR_TYPE(OUTPUT_TYPE, OUTPUT_BLOCK_SIZE_X) res = FUSED_OPS_RESULT_VEC;
         BLOCK_WRITE(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, res);
         output_y++;
 #else // HAS_FUSED_OPS
@@ -578,7 +405,6 @@ KERNEL(gemm_mmad_int8_opt)(
 #endif // !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
 
 }
-#endif // OUTPUT_LEFTOVERS_M || OUTPUT_LEFTOVERS_N || OUTPUT_LEFTOVERS_K
 
 #undef PACK_SIZE
 #undef AS_TYPE
