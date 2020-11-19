@@ -19,54 +19,71 @@
 
 #define AS_TYPE(type, val)          CAT(as_, type)(val)
 #define ACCUMULATOR_TYPE_VEC        CAT(ACCUMULATOR_TYPE, SUB_GROUP_SIZE)
-#define ACTIVATION_TYPE_VEC         CAT(ACTIVATION_TYPE, OUTPUT_BLOCK_SIZE_X)
 #define TO_ACTIVATION_TYPE_VEC(val) CAT(convert_, ACTIVATION_TYPE_VEC)(val)
 
 #if OUTPUT_X_BLOCK_SIZE_X > 1
+#   define INPUT1_TYPE_VEC          CAT(INPUT1_TYPE, OUTPUT_BLOCK_SIZE_X)
 #   define INPUT2_TYPE_VEC          CAT(INPUT2_TYPE, OUTPUT_BLOCK_SIZE_X)
+#   define ACTIVATION_TYPE_VEC      CAT(ACTIVATION_TYPE, OUTPUT_BLOCK_SIZE_X)
 #else
+#   define INPUT1_TYPE_VEC          INPUT1_TYPE
 #   define INPUT2_TYPE_VEC          INPUT2_TYPE
+#   define ACTIVATION_TYPE_VEC      ACTIVATION_TYPE
 #endif
 #define AS_INPUT2_TYPE_VEC          CAT(as_, INPUT2_TYPE_VEC)
 
 #define PACKED_INPUT0_TYPE_VEC      CAT(PACKED_INPUT0_TYPE, SUB_GROUP_SIZE)
 #define PACKED_INPUT1_TYPE_VEC      CAT(PACKED_INPUT1_TYPE, SUB_GROUP_SIZE)
-#define INPUT1_TYPE_VEC             CAT(INPUT1_TYPE, OUTPUT_BLOCK_SIZE_X)
+
 #define BLOCK_READ_INT(ptr)         intel_sub_group_block_read((const __global uint*)(ptr))
 #define BLOCK_READ_CHAR(ptr)        BLOCK_READ_UC_4((__global uchar*)(ptr))
 
-#define BLOCK_READ_US_1(ptr)        intel_sub_group_block_read_us((__global ushort*)(ptr))
-#define BLOCK_READ_US_2(ptr)        intel_sub_group_block_read_us2((__global ushort*)(ptr))
-#define BLOCK_READ_US_4(ptr)        intel_sub_group_block_read_us4((__global ushort*)(ptr))
+#define BLOCK_READ_US_1(ptr)        intel_sub_group_block_read_us(ptr)
+#define BLOCK_READ_US_2(ptr)        intel_sub_group_block_read_us2(ptr)
+#define BLOCK_READ_US_4(ptr)        intel_sub_group_block_read_us4(ptr)
+#define BLOCK_READ_US_8(ptr)        intel_sub_group_block_read_us8(ptr)
 
-#define BLOCK_READ_UI_1(ptr)        intel_sub_group_block_read((__global uint*)(ptr)) 
-#define BLOCK_READ_UI_2(ptr)        intel_sub_group_block_read2((__global uint*)(ptr))
-#define BLOCK_READ_UI_4(ptr)        intel_sub_group_block_read4((__global uint*)(ptr))
+#define BLOCK_READ_UI_1(ptr)        intel_sub_group_block_read(ptr)
+#define BLOCK_READ_UI_2(ptr)        intel_sub_group_block_read2(ptr)
+#define BLOCK_READ_UI_4(ptr)        intel_sub_group_block_read4(ptr)
+#define BLOCK_READ_UI_8(ptr)        intel_sub_group_block_read8(ptr)
 
-#define BLOCK_READ_UC_N(ptr)        CAT(BLOCK_READ_UC_, OUTPUT_BLOCK_SIZE_X)
-#define BLOCK_READ_US_N(ptr)        CAT(BLOCK_READ_US_, OUTPUT_BLOCK_SIZE_X)
-#define BLOCK_READ_UI_N(ptr)        CAT(BLOCK_READ_UI_, OUTPUT_BLOCK_SIZE_X)
+#define BLOCK_READ_UC_N(ptr)        CAT(BLOCK_READ_UC_, OUTPUT_BLOCK_SIZE_X)(ptr)
+#define BLOCK_READ_US_N(ptr)        CAT(BLOCK_READ_US_, OUTPUT_BLOCK_SIZE_X)(ptr)
+#define BLOCK_READ_UI_N(ptr)        CAT(BLOCK_READ_UI_, OUTPUT_BLOCK_SIZE_X)(ptr)
+
+#define BLOCK_WRITE_US_1(ptr, val)      intel_sub_group_block_write_us(ptr, as_ushort(val))
+#define BLOCK_WRITE_US_2(ptr, val)      intel_sub_group_block_write_us2(ptr, as_ushort2(val))
+#define BLOCK_WRITE_US_4(ptr, val)      intel_sub_group_block_write_us4(ptr, as_ushort4(val))
+#define BLOCK_WRITE_US_8(ptr, val)      intel_sub_group_block_write_us8(ptr, as_ushort8(val))
+
+#define BLOCK_WRITE_UI_1(ptr, val)      intel_sub_group_block_read(ptr, as_uint(val))
+#define BLOCK_WRITE_UI_2(ptr, val)      intel_sub_group_block_read2(ptr, as_uint2(val))
+#define BLOCK_WRITE_UI_4(ptr, val)      intel_sub_group_block_read4(ptr, as_uint4(val))
+#define BLOCK_WRITE_UI_8(ptr, val)      intel_sub_group_block_read4(ptr, as_uint8(val))
+
+#define BLOCK_WRITE_UC_N(ptr, val)      CAT(BLOCK_WRITE_UC_, OUTPUT_BLOCK_SIZE_X)(ptr, as_uchar(val))
+#define BLOCK_WRITE_US_N(ptr, val)      CAT(BLOCK_WRITE_US_, OUTPUT_BLOCK_SIZE_X)(ptr, as_uchar2(val))
+#define BLOCK_WRITE_UI_N(ptr, val)      CAT(BLOCK_WRITE_UI_, OUTPUT_BLOCK_SIZE_X)(ptr, as_uchar4(val))
 
 #ifdef INPUT2_TYPE
 #if INPUT2_TYPE_SIZE == 1
-#   define BLOCK_READ_INPUT2(ptr)   AS_INPUT2_TYPE_VEC(BLOCK_READ_UC_N((__global uchar*)(ptr)))
+#   define BLOCK_READ_INPUT2(ptr)       AS_INPUT2_TYPE_VEC(BLOCK_READ_UC_N((__global uchar*)(ptr)))
 #elif INPUT2_TYPE_SIZE == 2
-#   define BLOCK_READ_INPUT2(ptr)   AS_INPUT2_TYPE_VEC(BLOCK_READ_US_N((__global ushort*)(ptr)))
+#   define BLOCK_READ_INPUT2(ptr)       AS_INPUT2_TYPE_VEC(BLOCK_READ_US_N((__global ushort*)(ptr)))
 #elif INPUT2_TYPE_SIZE == 4
-#   define BLOCK_READ_INPUT2(ptr)   AS_INPUT2_TYPE_VEC(BLOCK_READ_UI_N((__global uint*)(ptr)))
+#   define BLOCK_READ_INPUT2(ptr)       AS_INPUT2_TYPE_VEC(BLOCK_READ_UI_N((__global uint*)(ptr)))
 #else
 #   error gemm_mmad_int8_opt.cl : unsupported input2 type
 #endif // INPUT2_TYPE_SIZE == 1
 #endif // INPUT2_TYPE
 
 #if OUTPUT_TYPE_SIZE == 1
-#   define BLOCK_WRITE(ptr, offset, val)    BLOCK_WRITE_UC_4((__global uchar*)(ptr) + (offset), as_uchar4(val))
-#   define BLOCK_WRITE(ptr, offset, val)    BLOCK_WRITE_UC_4((__global uchar*)(ptr) + (offset), as_uchar4(val))
-#   define BLOCK_WRITE(ptr, offset, val)    BLOCK_WRITE_UC_4((__global uchar*)(ptr) + (offset), as_uchar4(val))
+#   define BLOCK_WRITE_OUTPUT(ptr, offset, val)     BLOCK_WRITE_UC_N((__global uchar*)(ptr) + (offset), val)
 #elif OUTPUT_TYPE_SIZE == 2
-#   define BLOCK_WRITE(ptr, offset, val)    intel_sub_group_block_write_us4((__global ushort*)(ptr) + (offset), as_ushort4(val))
+#   define BLOCK_WRITE_OUTPUT(ptr, offset, val)     BLOCK_WRITE_US_N((__global ushort*)(ptr) + (offset), val)
 #elif OUTPUT_TYPE_SIZE == 4
-#   define BLOCK_WRITE(ptr, offset, val)    intel_sub_group_block_write4((__global uint*)(ptr) + (offset), as_uint4(val))
+#   define BLOCK_WRITE_OUTPUT(ptr, offset, val)     BLOCK_WRITE_UI_N((__global uint*)(ptr) + (offset), val)
 #else
 #   error gemm_mmad_int8_opt.cl : unsupported output type
 #endif // OUTPUT_TYPE_SIZE == 1
@@ -111,38 +128,6 @@ inline uint FUNC(get_output_batch_offset)(uint b, uint f, uint w, uint z) {
 #endif // OUTPUT_SIMPLE
 }
 
-inline uint FUNC(get_common_input1_offset)(uint batch_offset_input1, uint k, uint i, uint output_x_tile, uint lid) {
-#if !TRANSPOSE_INPUT1
-    return batch_offset_input1 + (k * TILE_SIZE_K + i * PACK_SIZE) * INPUT1_SIZE_X + output_x_tile * TILE_SIZE_N;
-#else // !TRANSPOSE_INPUT1
-    return batch_offset_input1 + (output_x_tile * TILE_SIZE_N + lid) * INPUT1_SIZE_X + k * TILE_SIZE_K + i * PACK_SIZE;
-#endif // !TRANSPOSE_INPUT1
-}
-
-inline uint FUNC(get_current_input1_offset)(uint common_input1_offset, uint i, uint lid) {
-#if !TRANSPOSE_INPUT1
-    return common_input1_offset + INPUT1_SIZE_X * i + lid;
-#else // !TRANSPOSE_INPUT1
-    return common_input1_offset + i;
-#endif // !TRANSPOSE_INPUT1
-}
-
-inline uint FUNC(get_common_input0_offset)(uint batch_offset_input0, uint k, uint i, uint output_y_tile, uint lid) {
-#if !TRANSPOSE_INPUT0
-    return batch_offset_input0 + (output_y_tile * TILE_SIZE_M + i) * INPUT0_SIZE_X + k * TILE_SIZE_K;
-#else // !TRANSPOSE_INPUT0
-    return batch_offset_input0 + (k * TILE_SIZE_K + lid * PACK_SIZE) * INPUT0_SIZE_X + output_y_tile * TILE_SIZE_M + i;
-#endif // !TRANSPOSE_INPUT0
-}
-
-inline uint FUNC(get_current_input0_offset)(uint common_input0_offset, uint i, uint lid) {
-#if !TRANSPOSE_INPUT0
-    return common_input0_offset + lid * PACK_SIZE + i;
-#else // !TRANSPOSE_INPUT0
-    return common_input0_offset + INPUT0_SIZE_X * i;
-#endif // !TRANSPOSE_INPUT0
-}
-
 __attribute__((reqd_work_group_size(SUB_GROUP_SIZE, 1, 1)))
 __attribute__((intel_reqd_sub_group_size(SUB_GROUP_SIZE)))
 KERNEL(gemm_mmad_int8_opt)(
@@ -180,32 +165,18 @@ KERNEL(gemm_mmad_int8_opt)(
 #endif // INPUT2_TYPE
     const uint batch_offset_output = FUNC_CALL(get_output_batch_offset)(b, f, w, z);
 
-#if !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
     // Register chunks of the output matrix (C)
-    ACCUMULATOR_TYPE_VEC tile_output[OUTPUT_BLOCK_SIZE_X] = { (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
-                                                            (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
-                                                            (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO),
-                                                            (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO) };
+    ACCUMULATOR_TYPE_VEC tile_output[OUTPUT_BLOCK_SIZE_X] = { (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO) };
 
     // Pointer to the result array (the matrix C)
     ACCUMULATOR_TYPE* tile_output_pnt = (ACCUMULATOR_TYPE*)tile_output;
-#else // !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
 
-    // One register chunk of the output matrix (C)
-    ACCUMULATOR_TYPE_VEC tile_output = (ACCUMULATOR_TYPE_VEC)(ACCUMULATOR_VAL_ZERO);
-#endif // !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
-
-#if !TRANSPOSE_INPUT0
     const uint K_BLOCK_NUM = INPUT0_SIZE_X / TILE_SIZE_K;
-#else // !TRANSPOSE_INPUT0
-    const uint K_BLOCK_NUM = INPUT0_SIZE_Y / TILE_SIZE_K;
-#endif // !TRANSPOSE_INPUT0
 
     // Loop by "k" tiles
     for (uint k = 0; k < K_BLOCK_NUM; k++) {
         PACKED_INPUT0_TYPE_VEC tile_input0;
 
-#if !TRANSPOSE_INPUT1 && !TRANSPOSE_INPUT0
         PACKED_INPUT1_TYPE_VEC tile_input1[OUTPUT_BLOCK_SIZE_X];
         PACKED_INPUT1_TYPE* tile_input1_pnt = (PACKED_INPUT1_TYPE*)tile_input1;
         INPUT1_TYPE_VEC temp_input1[PACK_SIZE];
@@ -230,72 +201,7 @@ KERNEL(gemm_mmad_int8_opt)(
                 tile_input1_pnt[i + j * SUB_GROUP_SIZE] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1_pack);
             }
         }
-#elif !TRANSPOSE_INPUT1
-        PACKED_INPUT1_TYPE_VEC tile_input1;
-        MAKE_VECTOR_TYPE(INPUT1_TYPE, PACK_SIZE) temp_input1[SUB_GROUP_SIZE];
 
-        const uint common_input1_offset = batch_offset_input1 + k * TILE_SIZE_K * INPUT1_SIZE_X + output_x_tile * TILE_SIZE_N;
-
-        // Loading the matrix B from the global memory to GRF
-        for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-            temp_input1[i].s0 = input1[common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + lid];
-            temp_input1[i].s1 = input1[common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + INPUT1_SIZE_X + lid];
-            temp_input1[i].s2 = input1[common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + 2 * INPUT1_SIZE_X + lid];
-            temp_input1[i].s3 = input1[common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + 3 * INPUT1_SIZE_X + lid];
-
-            tile_input1[i] = AS_TYPE(PACKED_INPUT1_TYPE, temp_input1[i]);
-        }
-#else // !TRANSPOSE_INPUT1 && !TRANSPOSE_INPUT0
-        PACKED_INPUT1_TYPE_VEC tile_input1;
-
-        const uint common_input1_offset = batch_offset_input1 + output_x_tile * TILE_SIZE_N * INPUT1_SIZE_X + k * TILE_SIZE_K;
-
-        // Loading the matrix B from the global memory to GRF
-        for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-            tile_input1[i] = AS_TYPE(PACKED_INPUT1_TYPE, BLOCK_READ_INT(input1 + common_input1_offset  + i * INPUT1_SIZE_X));
-        }
-
-        PACKED_INPUT1_TYPE_VEC tile_input1_col0 = BLOCK_SHUFFLE(tile_input1, 0);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col1 = BLOCK_SHUFFLE(tile_input1, 1);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col2 = BLOCK_SHUFFLE(tile_input1, 2);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col3 = BLOCK_SHUFFLE(tile_input1, 3);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col4 = BLOCK_SHUFFLE(tile_input1, 4);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col5 = BLOCK_SHUFFLE(tile_input1, 5);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col6 = BLOCK_SHUFFLE(tile_input1, 6);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col7 = BLOCK_SHUFFLE(tile_input1, 7);
-#if SUB_GROUP_SIZE == 16
-        PACKED_INPUT1_TYPE_VEC tile_input1_col8 = BLOCK_SHUFFLE(tile_input1, 8);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col9 = BLOCK_SHUFFLE(tile_input1, 9);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col10 = BLOCK_SHUFFLE(tile_input1, 10);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col11 = BLOCK_SHUFFLE(tile_input1, 11);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col12 = BLOCK_SHUFFLE(tile_input1, 12);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col13 = BLOCK_SHUFFLE(tile_input1, 13);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col14 = BLOCK_SHUFFLE(tile_input1, 14);
-        PACKED_INPUT1_TYPE_VEC tile_input1_col15 = BLOCK_SHUFFLE(tile_input1, 15);
-#endif // SUB_GROUP_SIZE == 16
-
-        tile_input1.s0 = tile_input1_col0[lid];
-        tile_input1.s1 = tile_input1_col1[lid];
-        tile_input1.s2 = tile_input1_col2[lid];
-        tile_input1.s3 = tile_input1_col3[lid];
-        tile_input1.s4 = tile_input1_col4[lid];
-        tile_input1.s5 = tile_input1_col5[lid];
-        tile_input1.s6 = tile_input1_col6[lid];
-        tile_input1.s7 = tile_input1_col7[lid];
-#if SUB_GROUP_SIZE == 16
-        tile_input1.s8 = tile_input1_col8[lid];
-        tile_input1.s9 = tile_input1_col9[lid];
-        tile_input1.sa = tile_input1_col10[lid];
-        tile_input1.sb = tile_input1_col11[lid];
-        tile_input1.sc = tile_input1_col12[lid];
-        tile_input1.sd = tile_input1_col13[lid];
-        tile_input1.se = tile_input1_col14[lid];
-        tile_input1.sf = tile_input1_col15[lid];
-#endif // SUB_GROUP_SIZE == 16
-
-#endif // !TRANSPOSE_INPUT1 && !TRANSPOSE_INPUT0
-
-#if !TRANSPOSE_INPUT0
         const uint common_input0_offset = batch_offset_input0 + output_y_tile * TILE_SIZE_M * INPUT0_SIZE_X + k * TILE_SIZE_K;
 
         // Loading the matrix A from the global memory to GRF
@@ -303,35 +209,11 @@ KERNEL(gemm_mmad_int8_opt)(
             tile_input0[i] = AS_TYPE(PACKED_INPUT0_TYPE, BLOCK_READ_INT(input0 + common_input0_offset + i * INPUT0_SIZE_X));
         }
 
-#else // !TRANSPOSE_INPUT0
-        MAKE_VECTOR_TYPE(INPUT0_TYPE, PACK_SIZE) temp_input0[SUB_GROUP_SIZE];
-        const uint common_input0_offset = batch_offset_input0 + (k * TILE_SIZE_K + lid * PACK_SIZE) * INPUT0_SIZE_X + output_y_tile * TILE_SIZE_M;
-
-        // Loading the matrix A from the global memory to GRF
-        for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-            temp_input0[i].s0 = input0[common_input0_offset + i];
-            temp_input0[i].s1 = input0[common_input0_offset + 1 * INPUT0_SIZE_X + i];
-            temp_input0[i].s2 = input0[common_input0_offset + 2 * INPUT0_SIZE_X + i];
-            temp_input0[i].s3 = input0[common_input0_offset + 3 * INPUT0_SIZE_X + i];
-
-            tile_input0[i] = AS_TYPE(PACKED_INPUT0_TYPE, temp_input0[i]);
-        }
-
-#endif // !TRANSPOSE_INPUT0
-
-#if !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
     // We should calculate OUTPUT_BLOCK_SIZE_X chunks of the matrix C
         for (uint i = 0; i < OUTPUT_BLOCK_SIZE_X; i++) {
             tile_output[i] = MMAD(tile_input0, tile_input1[i], tile_output[i]);
         }
-#else // !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
-
-        // Calculating one chunk of the matrix C
-        tile_output = MMAD(tile_input0, tile_input1, tile_output);
-#endif // !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
     }
-
-#if !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
 
 #if HAS_FUSED_OPS
     uint output_x = output_x_tile * TILE_SIZE_N;
@@ -368,42 +250,6 @@ KERNEL(gemm_mmad_int8_opt)(
         BLOCK_WRITE(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, dequantized);
 #endif // HAS_FUSED_OPS
     }
-
-#else // !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
-
-#if HAS_FUSED_OPS
-    uint output_x = (uint)get_global_id(0);
-    uint output_y = output_y_tile * TILE_SIZE_M;
-#if FUSED_OPS_CAN_USE_PRELOAD
-    FUSED_OPS_PRELOAD_SCALAR;
-#endif // FUSED_OPS_CAN_USE_PRELOAD
-#endif // HAS_FUSED_OPS
-
-    for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-        ACTIVATION_TYPE dequantized = TO_ACTIVATION_TYPE(tile_output[i]);
-        dequantized *= TO_ACTIVATION_TYPE(ALPHA);
-#ifdef INPUT2_TYPE
-        dequantized += TO_ACTIVATION_TYPE(BETA) * TO_ACTIVATION_TYPE(input2[batch_offset_input2 +
-                       (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + lid]);
-#endif // INPUT2_TYPE
-
-#if HAS_FUSED_OPS
-#if FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS_CALC_SCALAR;
-#else // FUSED_OPS_CAN_USE_PRELOAD
-        FUSED_OPS_SCALAR;
-#endif // FUSED_OPS_CAN_USE_PRELOAD
-
-        OUTPUT_TYPE res = FUSED_OPS_RESULT_SCALAR;
-        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + lid] = res;
-        output_y++;
-#else // HAS_FUSED_OPS
-        output[batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N + lid] = dequantized;
-#endif // HAS_FUSED_OPS
-    }
-
-#endif // !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
-
 }
 
 #undef PACK_SIZE
