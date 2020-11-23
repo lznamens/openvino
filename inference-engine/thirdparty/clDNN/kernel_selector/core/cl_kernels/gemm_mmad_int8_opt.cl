@@ -18,25 +18,20 @@
 #define PACK_SIZE                   4
 
 #define AS_TYPE(type, val)          CAT(as_, type)(val)
+
+#define INPUT1_TYPE_VEC             CAT(INPUT1_TYPE, OUTPUT_BLOCK_SIZE_X)
+#define INPUT2_TYPE_VEC             CAT(INPUT2_TYPE, OUTPUT_BLOCK_SIZE_X)
+#define ACTIVATION_TYPE_VEC         CAT(ACTIVATION_TYPE, OUTPUT_BLOCK_SIZE_X)
+
+#define AS_INPUT2_TYPE_VEC          CAT(as_, INPUT2_TYPE_VEC)
 #define TO_ACTIVATION_TYPE_VEC(val) CAT(convert_, ACTIVATION_TYPE_VEC)(val)
 
-#if OUTPUT_BLOCK_SIZE_X > 1
-#   define INPUT1_TYPE_VEC          CAT(INPUT1_TYPE, OUTPUT_BLOCK_SIZE_X)
-#   define INPUT2_TYPE_VEC          CAT(INPUT2_TYPE, OUTPUT_BLOCK_SIZE_X)
-#   define ACTIVATION_TYPE_VEC      CAT(ACTIVATION_TYPE, OUTPUT_BLOCK_SIZE_X)
-#else
-#   define INPUT1_TYPE_VEC          INPUT1_TYPE
-#   define INPUT2_TYPE_VEC          INPUT2_TYPE
-#   define ACTIVATION_TYPE_VEC      ACTIVATION_TYPE
-#endif
-#define AS_INPUT2_TYPE_VEC          CAT(as_, INPUT2_TYPE_VEC)
-
 #if OUTPUT_BLOCK_SIZE_Y > 1
-#   define PACKED_INPUT0_TYPE_VEC   CAT(PACKED_INPUT0_TYPE, OUTPUT_BLOCK_SIZE_Y)
-#   define ACCUMULATOR_TYPE_VEC     CAT(ACCUMULATOR_TYPE, OUTPUT_BLOCK_SIZE_Y)
+#   define PACKED_INPUT0_TYPE_VEC      CAT(PACKED_INPUT0_TYPE, OUTPUT_BLOCK_SIZE_Y)
+#   define ACCUMULATOR_TYPE_VEC        CAT(ACCUMULATOR_TYPE, OUTPUT_BLOCK_SIZE_Y)
 #else
-#   define PACKED_INPUT0_TYPE_VEC   PACKED_INPUT0_TYPE
-#   define ACCUMULATOR_TYPE_VEC     ACCUMULATOR_TYPE
+#   define PACKED_INPUT0_TYPE_VEC      PACKED_INPUT0_TYPE
+#   define ACCUMULATOR_TYPE_VEC        ACCUMULATOR_TYPE
 #endif
 
 #define PACKED_INPUT1_TYPE_VEC      CAT(PACKED_INPUT1_TYPE, SUB_GROUP_SIZE)
@@ -198,7 +193,7 @@ KERNEL(gemm_mmad_int8_opt)(
             }
 
             for (uint j = 0; j < OUTPUT_BLOCK_SIZE_X; j++) {
-                INPUT1_TYPE_VEC temp_input1_pack;
+                MAKE_VECTOR_TYPE(INPUT1_TYPE, PACK_SIZE) temp_input1_pack;
                 temp_input1_pack.s0 = temp_input1_pnt[j];
                 temp_input1_pack.s1 = temp_input1_pnt[j + OUTPUT_BLOCK_SIZE_X];
                 temp_input1_pack.s2 = temp_input1_pnt[j + 2 * OUTPUT_BLOCK_SIZE_X];
@@ -231,7 +226,7 @@ KERNEL(gemm_mmad_int8_opt)(
 #endif // HAS_FUSED_OPS
 
     for (uint i = 0; i < OUTPUT_BLOCK_SIZE_Y; i++) {
-        MAKE_VECTOR_TYPE(ACCUMULATOR_TYPE, 4) tile_output_temp;
+        MAKE_VECTOR_TYPE(ACCUMULATOR_TYPE, OUTPUT_BLOCK_SIZE_X) tile_output_temp;
         for (uint j = 0; j < OUTPUT_BLOCK_SIZE_X; j++) {
             tile_output_temp[j] = tile_output_pnt[j * OUTPUT_BLOCK_SIZE_Y + i];
         }

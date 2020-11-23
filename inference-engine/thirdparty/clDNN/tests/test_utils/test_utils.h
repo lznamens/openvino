@@ -240,6 +240,41 @@ VVVVVVF<T> generate_random_6d(size_t a, size_t b, size_t c, size_t d, size_t e, 
     return v;
 }
 
+template<typename T>
+std::vector<T> generate_counter_1d(size_t a, size_t begin) {
+    std::vector<T> v(a);
+
+    for (size_t i = 0; i < a; ++i) {
+        v[i] = (T)(begin + i);
+    }
+    return v;
+}
+
+template<typename T>
+std::vector<std::vector<T>> generate_counter_2d(size_t a, size_t b, size_t begin) {
+    std::vector<std::vector<T>> v(a);
+    for (size_t i = 0; i < a; ++i)
+        v[i] = generate_counter_1d<T>(b, begin + i * b);
+    return v;
+}
+
+template<typename T>
+std::vector<std::vector<std::vector<T>>> generate_counter_3d(size_t a, size_t b, size_t c, size_t begin) {
+    std::vector<std::vector<std::vector<T>>> v(a);
+    for (size_t i = 0; i < a; ++i)
+        v[i] = generate_counter_2d<T>(b, c, begin + i * b * c);
+    return v;
+}
+
+// parameters order is assumed to be bfyx or bfyx
+template<typename T>
+std::vector<std::vector<std::vector<std::vector<T>>>> generate_counter_4d(size_t a, size_t b, size_t c, size_t d, size_t begin) {
+    std::vector<std::vector<std::vector<std::vector<T>>>> v(a);
+    for (size_t i = 0; i < a; ++i)
+        v[i] = generate_counter_3d<T>(b, c, d, begin + i * b * c * d);
+    return v;
+}
+
 template <class T> void set_value(const cldnn::pointer<T>& ptr, uint32_t index, T value) { ptr[index] = value; }
 template <class T> T    get_value(const cldnn::pointer<T>& ptr, uint32_t index) { return ptr[index]; }
 

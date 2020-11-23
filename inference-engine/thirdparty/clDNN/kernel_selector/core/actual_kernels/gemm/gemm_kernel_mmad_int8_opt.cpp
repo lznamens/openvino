@@ -111,7 +111,7 @@ GemmKernelMMADint8opt::GemmTuningData GemmKernelMMADint8opt::InitGemmTuningData(
     tuning_data.size_m = params.output.Y().v;
     tuning_data.size_n = params.output.X().v;
     tuning_data.size_k = params.inputs[0].X().v;
-
+    printf("m = %d n = %d k = %d\n", (int)tuning_data.size_m, (int)tuning_data.size_n, (int)tuning_data.size_k);
     return tuning_data;
 }
 
@@ -130,7 +130,7 @@ GemmKernelMMADint8opt::GemmTuningData GemmKernelMMADint8opt::SetTuningParams(con
     // auto mmad_operations_number = GetMmadOperationsNumber(tuning_data);
 
     size_t simd_size = 8;
-    size_t output_block_size_x = 4;
+    size_t output_block_size_x = 2;
     size_t output_block_size_y = 1;
 
     tuning_data.simd_size = simd_size;

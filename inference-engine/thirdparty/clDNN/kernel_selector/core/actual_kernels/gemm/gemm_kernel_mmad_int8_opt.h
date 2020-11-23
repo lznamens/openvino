@@ -27,8 +27,8 @@ public:
         size_t size_n;
         size_t size_k;
 
-        size_t simd_size = 16;
-        size_t output_block_size_x = 4;
+        size_t simd_size = 8;
+        size_t output_block_size_x = 2;
         size_t output_block_size_y = 1;
         const size_t pack_size = 4;
 
