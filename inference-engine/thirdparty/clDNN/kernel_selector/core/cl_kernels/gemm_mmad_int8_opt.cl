@@ -18,10 +18,9 @@
 #define PACK_SIZE                   4
 
 #define AS_TYPE(type, val)          CAT(as_, type)(val)
-#define ACCUMULATOR_TYPE_VEC        CAT(ACCUMULATOR_TYPE, SUB_GROUP_SIZE)
 #define TO_ACTIVATION_TYPE_VEC(val) CAT(convert_, ACTIVATION_TYPE_VEC)(val)
 
-#if OUTPUT_X_BLOCK_SIZE_X > 1
+#if OUTPUT_BLOCK_SIZE_X > 1
 #   define INPUT1_TYPE_VEC          CAT(INPUT1_TYPE, OUTPUT_BLOCK_SIZE_X)
 #   define INPUT2_TYPE_VEC          CAT(INPUT2_TYPE, OUTPUT_BLOCK_SIZE_X)
 #   define ACTIVATION_TYPE_VEC      CAT(ACTIVATION_TYPE, OUTPUT_BLOCK_SIZE_X)
@@ -32,11 +31,15 @@
 #endif
 #define AS_INPUT2_TYPE_VEC          CAT(as_, INPUT2_TYPE_VEC)
 
-#define PACKED_INPUT0_TYPE_VEC      CAT(PACKED_INPUT0_TYPE, SUB_GROUP_SIZE)
-#define PACKED_INPUT1_TYPE_VEC      CAT(PACKED_INPUT1_TYPE, SUB_GROUP_SIZE)
+#if OUTPUT_BLOCK_SIZE_Y > 1
+#   define PACKED_INPUT0_TYPE_VEC   CAT(PACKED_INPUT0_TYPE, OUTPUT_BLOCK_SIZE_Y)
+#   define ACCUMULATOR_TYPE_VEC     CAT(ACCUMULATOR_TYPE, OUTPUT_BLOCK_SIZE_Y)
+#else
+#   define PACKED_INPUT0_TYPE_VEC   PACKED_INPUT0_TYPE
+#   define ACCUMULATOR_TYPE_VEC     ACCUMULATOR_TYPE
+#endif
 
-#define BLOCK_READ_INT(ptr)         intel_sub_group_block_read((const __global uint*)(ptr))
-#define BLOCK_READ_CHAR(ptr)        BLOCK_READ_UC_4((__global uchar*)(ptr))
+#define PACKED_INPUT1_TYPE_VEC      CAT(PACKED_INPUT1_TYPE, SUB_GROUP_SIZE)
 
 #define BLOCK_READ_US_1(ptr)        intel_sub_group_block_read_us(ptr)
 #define BLOCK_READ_US_2(ptr)        intel_sub_group_block_read_us2(ptr)
@@ -57,14 +60,17 @@
 #define BLOCK_WRITE_US_4(ptr, val)      intel_sub_group_block_write_us4(ptr, as_ushort4(val))
 #define BLOCK_WRITE_US_8(ptr, val)      intel_sub_group_block_write_us8(ptr, as_ushort8(val))
 
-#define BLOCK_WRITE_UI_1(ptr, val)      intel_sub_group_block_read(ptr, as_uint(val))
-#define BLOCK_WRITE_UI_2(ptr, val)      intel_sub_group_block_read2(ptr, as_uint2(val))
-#define BLOCK_WRITE_UI_4(ptr, val)      intel_sub_group_block_read4(ptr, as_uint4(val))
-#define BLOCK_WRITE_UI_8(ptr, val)      intel_sub_group_block_read4(ptr, as_uint8(val))
+#define BLOCK_WRITE_UI_1(ptr, val)      intel_sub_group_block_write(ptr, as_uint(val))
+#define BLOCK_WRITE_UI_2(ptr, val)      intel_sub_group_block_write2(ptr, as_uint2(val))
+#define BLOCK_WRITE_UI_4(ptr, val)      intel_sub_group_block_write4(ptr, as_uint4(val))
+#define BLOCK_WRITE_UI_8(ptr, val)      intel_sub_group_block_write8(ptr, as_uint8(val))
 
-#define BLOCK_WRITE_UC_N(ptr, val)      CAT(BLOCK_WRITE_UC_, OUTPUT_BLOCK_SIZE_X)(ptr, as_uchar(val))
-#define BLOCK_WRITE_US_N(ptr, val)      CAT(BLOCK_WRITE_US_, OUTPUT_BLOCK_SIZE_X)(ptr, as_uchar2(val))
-#define BLOCK_WRITE_UI_N(ptr, val)      CAT(BLOCK_WRITE_UI_, OUTPUT_BLOCK_SIZE_X)(ptr, as_uchar4(val))
+#define BLOCK_WRITE_UC_N(ptr, val)      CAT(BLOCK_WRITE_UC_, OUTPUT_BLOCK_SIZE_X)(ptr, val)
+#define BLOCK_WRITE_US_N(ptr, val)      CAT(BLOCK_WRITE_US_, OUTPUT_BLOCK_SIZE_X)(ptr, val)
+#define BLOCK_WRITE_UI_N(ptr, val)      CAT(BLOCK_WRITE_UI_, OUTPUT_BLOCK_SIZE_X)(ptr, val)
+
+#define BLOCK_READ_INPUT0(ptr)          AS_TYPE(PACKED_INPUT0_TYPE, BLOCK_READ_UI_1((__global uint*)(ptr)))
+#define BLOCK_READ_INPUT1(ptr)          AS_TYPE(INPUT1_TYPE_VEC, BLOCK_READ_UC_N((__global uchar*)(ptr)))
 
 #ifdef INPUT2_TYPE
 #if INPUT2_TYPE_SIZE == 1
@@ -89,9 +95,9 @@
 #endif // OUTPUT_TYPE_SIZE == 1
 
 #if SUB_GROUP_SIZE == 8
-#define MMAD                    MMAD_8x8
+#define MMAD                    MMAD_8
 #else // SUB_GROUP_SIZE == 8
-#define MMAD                    MMAD_16x16
+#define MMAD                    MMAD_16
 #endif // SUB_GROUP_SIZE == 8
 
 inline uint FUNC(get_input0_batch_offset)(uint b, uint f, uint w, uint z) {
@@ -184,11 +190,11 @@ KERNEL(gemm_mmad_int8_opt)(
 
         const uint common_input1_offset = batch_offset_input1 + k * TILE_SIZE_K * INPUT1_SIZE_X + output_x_tile * TILE_SIZE_N;
 
-        for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
+        for (uint i = 0; i < OUTPUT_BLOCK_SIZE_Y; i++) {
 
             // Loading the matrix B from the global memory to GRF
             for (uint j = 0; j < PACK_SIZE; j++) {
-                temp_input1[j] = AS_TYPE(INPUT1_TYPE_VEC, BLOCK_READ_CHAR(input1 + common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + j * INPUT1_SIZE_X));
+                temp_input1[j] = BLOCK_READ_INPUT1(input1 + common_input1_offset + i * PACK_SIZE * INPUT1_SIZE_X + j * INPUT1_SIZE_X);
             }
 
             for (uint j = 0; j < OUTPUT_BLOCK_SIZE_X; j++) {
@@ -205,13 +211,14 @@ KERNEL(gemm_mmad_int8_opt)(
         const uint common_input0_offset = batch_offset_input0 + output_y_tile * TILE_SIZE_M * INPUT0_SIZE_X + k * TILE_SIZE_K;
 
         // Loading the matrix A from the global memory to GRF
-        for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
-            tile_input0[i] = AS_TYPE(PACKED_INPUT0_TYPE, BLOCK_READ_INT(input0 + common_input0_offset + i * INPUT0_SIZE_X));
+        for (uint i = 0; i < OUTPUT_BLOCK_SIZE_Y; i++) {
+            tile_input0 = BLOCK_READ_INPUT0(input0 + common_input0_offset + i * INPUT0_SIZE_X);
         }
 
     // We should calculate OUTPUT_BLOCK_SIZE_X chunks of the matrix C
         for (uint i = 0; i < OUTPUT_BLOCK_SIZE_X; i++) {
-            tile_output[i] = MMAD(tile_input0, tile_input1[i], tile_output[i]);
+            MAKE_VECTOR_TYPE(PACKED_INPUT0_TYPE_VEC, SUB_GROUP_SIZE) temp_input0 = tile_input0;
+            tile_output[i] = MMAD(temp_input0, tile_input1[i], tile_output[i]);
         }
     }
 
@@ -223,10 +230,10 @@ KERNEL(gemm_mmad_int8_opt)(
 #endif // FUSED_OPS_CAN_USE_PRELOAD
 #endif // HAS_FUSED_OPS
 
-    for (uint i = 0; i < SUB_GROUP_SIZE; i++) {
+    for (uint i = 0; i < OUTPUT_BLOCK_SIZE_Y; i++) {
         MAKE_VECTOR_TYPE(ACCUMULATOR_TYPE, 4) tile_output_temp;
         for (uint j = 0; j < OUTPUT_BLOCK_SIZE_X; j++) {
-            tile_output_temp[j] = tile_output_pnt[j * SUB_GROUP_SIZE + i];
+            tile_output_temp[j] = tile_output_pnt[j * OUTPUT_BLOCK_SIZE_Y + i];
         }
 
         ACTIVATION_TYPE_VEC dequantized = TO_ACTIVATION_TYPE(ALPHA) * TO_ACTIVATION_TYPE_VEC(tile_output_temp);
@@ -244,10 +251,10 @@ KERNEL(gemm_mmad_int8_opt)(
 #endif // FUSED_OPS_CAN_USE_PRELOAD
 
         MAKE_VECTOR_TYPE(OUTPUT_TYPE, OUTPUT_BLOCK_SIZE_X) res = FUSED_OPS_RESULT_VEC;
-        BLOCK_WRITE(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, res);
+        BLOCK_WRITE_OUTPUT(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, res);
         output_y++;
 #else // HAS_FUSED_OPS
-        BLOCK_WRITE(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, dequantized);
+        BLOCK_WRITE_OUTPUT(output, batch_offset_output + (output_y_tile * TILE_SIZE_M + i) * OUTPUT_SIZE_X + output_x_tile * TILE_SIZE_N, dequantized);
 #endif // HAS_FUSED_OPS
     }
 }
@@ -268,3 +275,4 @@ KERNEL(gemm_mmad_int8_opt)(
 #undef BLOCK_WRITE
 #undef BLOCK_SHUFFLE
 #undef MMAD
+
