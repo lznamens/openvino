@@ -130,7 +130,7 @@ GemmKernelMMADint8opt::GemmTuningData GemmKernelMMADint8opt::SetTuningParams(con
     // auto mmad_operations_number = GetMmadOperationsNumber(tuning_data);
 
     size_t simd_size = 8;
-    size_t output_block_size_x = 2;
+    size_t output_block_size_x = 1;
     size_t output_block_size_y = 1;
 
     tuning_data.simd_size = simd_size;

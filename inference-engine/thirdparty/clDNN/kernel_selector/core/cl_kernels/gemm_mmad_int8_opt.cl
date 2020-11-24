@@ -215,22 +215,34 @@ KERNEL(gemm_mmad_int8_opt)(
         }
 
         // We should calculate OUTPUT_BLOCK_SIZE_X chunks of the matrix C
-        for (uint i = 0; i < OUTPUT_BLOCK_SIZE_X; i++) {
-            MAKE_VECTOR_TYPE(PACKED_INPUT0_TYPE_VEC, SUB_GROUP_SIZE) temp_input0;
+        for (uint i = 0; i < OUTPUT_BLOCK_SIZE_Y; i++) {
+            for (uint j = 0; j < OUTPUT_BLOCK_SIZE_X; j++) {
+                MAKE_VECTOR_TYPE(PACKED_INPUT0_TYPE, SUB_GROUP_SIZE) temp_input0;
 
-            temp_input0.s0 = sub_group_broadcast(tile_input0[i], 0);
-            temp_input0.s1 = sub_group_broadcast(tile_input0[i], 1);
-            temp_input0.s2 = sub_group_broadcast(tile_input0[i], 2);
-            temp_input0.s3 = sub_group_broadcast(tile_input0[i], 3);
-            temp_input0.s4 = sub_group_broadcast(tile_input0[i], 4);
-            temp_input0.s5 = sub_group_broadcast(tile_input0[i], 5);
-            temp_input0.s6 = sub_group_broadcast(tile_input0[i], 6);
-            temp_input0.s7 = sub_group_broadcast(tile_input0[i], 7);
+                temp_input0.s0 = sub_group_broadcast(tile_input0[i], 0);
+                temp_input0.s1 = sub_group_broadcast(tile_input0[i], 1);
+                temp_input0.s2 = sub_group_broadcast(tile_input0[i], 2);
+                temp_input0.s3 = sub_group_broadcast(tile_input0[i], 3);
+                temp_input0.s4 = sub_group_broadcast(tile_input0[i], 4);
+                temp_input0.s5 = sub_group_broadcast(tile_input0[i], 5);
+                temp_input0.s6 = sub_group_broadcast(tile_input0[i], 6);
+                temp_input0.s7 = sub_group_broadcast(tile_input0[i], 7);
+#if SUB_GROUP_SIZE == 16
+                temp_input0.s8 = sub_group_broadcast(tile_input0[i], 8);
+                temp_input0.s9 = sub_group_broadcast(tile_input0[i], 9);
+                temp_input0.sa = sub_group_broadcast(tile_input0[i], 10);
+                temp_input0.sb = sub_group_broadcast(tile_input0[i], 11);
+                temp_input0.sc = sub_group_broadcast(tile_input0[i], 12);
+                temp_input0.sd = sub_group_broadcast(tile_input0[i], 13);
+                temp_input0.se = sub_group_broadcast(tile_input0[i], 14);
+                temp_input0.sf = sub_group_broadcast(tile_input0[i], 15);
+#endif                   
 
-            //printf("x = %d y = %d lid = %d tile_input0 = %08x\n", (uint)get_global_id(0), (uint)get_global_id(1), (uint)lid, temp_input0);
-            tile_output[i] = MMAD(temp_input0, tile_input1[i], tile_output[i]);
-            //printf("x = %d y = %d lid = %d temp_input0 = %08x   tile_input1[i] = %08x    tile_output[i] = %08x\n", (uint)get_global_id(0), (uint)get_global_id(1), (uint)lid, temp_input0, tile_input1[i], tile_output[i]);
-        }
+                //printf("x = %d y = %d lid = %d tile_input0 = %08x\n", (uint)get_global_id(0), (uint)get_global_id(1), (uint)lid, temp_input0);
+                tile_output_pnt[j * OUTPUT_BLOCK_SIZE_Y + i] = MMAD(temp_input0, tile_input1[j], tile_output_pnt[j * OUTPUT_BLOCK_SIZE_Y + i]);
+                //printf("x = %d y = %d lid = %d temp_input0 = %08x   tile_input1[i] = %08x    tile_output[i] = %08x\n", (uint)get_global_id(0), (uint)get_global_id(1), (uint)lid, temp_input0, tile_input1[i], tile_output[i]);
+            }
+        }    
     }
 
 #if HAS_FUSED_OPS
