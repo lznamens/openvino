@@ -493,7 +493,7 @@ KERNEL(gemm_mmad_int8)(
 #endif // !TRANSPOSE_INPUT0
 
 #if !TRANSPOSE_INPUT0 && !TRANSPOSE_INPUT1
-    // We should calculate OUTPUT_BLOCK_SIZE chunks of the matrix C
+        // We should calculate OUTPUT_BLOCK_SIZE chunks of the matrix C
         for (uint i = 0; i < OUTPUT_BLOCK_SIZE; i++) {
             tile_output[i] = MMAD(tile_input0, tile_input1[i], tile_output[i]);
         }
