@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Intel Corporation
+﻿// Copyright (c) 2018-2020 Intel Corporation
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -149,6 +149,39 @@ static bool get_imad_support(const cl::Device& device) {
     return false;
 }
 
+static bool get_dpas_support(const cl::Device& device) {
+    std::string dev_name = device.getInfo<CL_DEVICE_NAME>();
+
+    if (dev_name.find("Gen12HP") != std::string::npos)
+        return true;
+
+    const std::vector<std::pair<int, int> > dpas_ids_array = {
+        { 0x0201, 0x0210 },
+        { 0x4F80, 0x4F84 },
+        { 0x56A0, 0x56AF },
+        { 0x5690, 0x569F },
+        { 0x56B0, 0x56BF },
+        { 0x56C0, 0x56CF }
+    };
+    const std::vector<int> dpas_ids = {
+        0x0BD0, 0x0BD5, 0x7D40, 0x7D50, 0x7D60, 0x7D70,
+        0x7D7D, 0x7D7E, 0x7D7F, 0x7D75, 0x7D79
+    };
+    int dev_id = driver_dev_id();
+    if (dev_id == 0)
+        return false;
+
+    for (const auto& ids : dpas_ids_array) {
+        if (dev_id >= ids.first && dev_id <= ids.second)
+            return true;
+    }
+
+    if (std::find(dpas_ids.begin(), dpas_ids.end(), dev_id) != dpas_ids.end())
+        return true;
+
+    return false;
+}
+
 bool is_local_block_io_supported(const cl::Device& device) {
     try {
         cl::Context ctx(device);
@@ -201,6 +234,9 @@ device_info_internal::device_info_internal(const cl::Device& device) {
     cores_count = static_cast<uint32_t>(device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>());
     core_frequency = static_cast<uint32_t>(device.getInfo<CL_DEVICE_MAX_CLOCK_FREQUENCY>());
 
+    threads_per_compute_unit = static_cast<uint32_t>(get_dpas_support(device) ? 8 : 7);
+    max_threads_per_device = static_cast<uint32_t>(cores_count * threads_per_compute_unit);
+
     max_work_group_size = static_cast<uint64_t>(device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>());
 
     if (max_work_group_size > 256)
@@ -225,6 +261,8 @@ device_info_internal::device_info_internal(const cl::Device& device) {
 
     supports_imad = get_imad_support(device);
     supports_immad = false;
+
+    supports_dpas = get_dpas_support(device);
 
     vendor_id = static_cast<uint32_t>(device.getInfo<CL_DEVICE_VENDOR_ID>());
 

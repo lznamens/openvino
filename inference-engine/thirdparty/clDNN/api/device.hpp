@@ -1,5 +1,5 @@
 /*
-// Copyright (c) 2019 Intel Corporation
+// Copyright (c) 2019-2020 Intel Corporation
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,6 +39,8 @@ enum class device_type {
 struct device_info {
     uint32_t cores_count;     ///< Number of available HW cores.
     uint32_t core_frequency;  ///< Clock frequency in MHz.
+    uint32_t threads_per_compute_unit;  ///< Number of available HW threads on EU.
+    uint32_t max_threads_per_device;    ///< Maximum number of HW threads on device.
 
     uint64_t max_work_group_size;  ///< Maximum number of work-items in a work-group executing a kernel using the data parallel execution model.
     uint64_t max_local_mem_size;   ///< Maximum size of local memory arena in bytes.
@@ -56,6 +58,8 @@ struct device_info {
 
     uint8_t supports_imad;   ///< Does engine support int8 mad.
     uint8_t supports_immad;  ///< Does engine support int8 multi mad.
+
+    uint8_t supports_dpas;   ///< Does engine support systolic mad.
 
     uint8_t supports_usm;    ///< Does engine support unified shared memory.
 
